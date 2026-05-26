@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arrivata — Dashboard de Presencia</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lato:wght@300;400;700&display=swap');
+
+  :root {
+    --red:      #8B1714;
+    --red-dark: #6D1010;
+    --gold:     #A07830;
+    --gold-dark:#7D5E24;
+    --cream:    #FAF6EE;
+    --cream-2:  #F3ECD9;
+    --border:   #E5D9C4;
+    --text:     #1C1208;
+    --muted:    #7B6A55;
+  }
+
+  * { font-family:'Lato',system-ui,sans-serif; box-sizing:border-box; }
+  body { background:var(--cream); color:var(--text); min-height:100vh; }
+
+  .card { background:#fff; border:1px solid var(--border); border-radius:10px; }
+  .stat-card { transition:transform .2s,box-shadow .2s; }
+  .stat-card:hover { transform:translateY(-2px); box-shadow:0 10px 25px -5px rgba(139,23,20,.12); }
+
+  .btn { display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:7px;font-size:.875rem;font-weight:700;cursor:pointer;border:none;transition:all .15s;letter-spacing:.01em; }
+  .btn-blue   { background:var(--red);color:#fff; } .btn-blue:hover   { background:var(--red-dark); }
+  .btn-purple { background:var(--gold);color:#fff; } .btn-purple:hover { background:var(--gold-dark); }
+  .btn-ghost  { background:transparent;color:var(--muted);border:1px solid var(--border); } .btn-ghost:hover { background:var(--cream-2);color:var(--text); }
+  .btn:disabled { opacity:.5;cursor:not-allowed; }
+
+  .badge-si  { display:inline-block;background:#dcfce7;color:#16a34a;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:700; }
+  .badge-no  { display:inline-block;background:#fee2e2;color:#dc2626;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:700; }
+  .badge-sm  { display:inline-block;border-radius:999px;padding:1px 7px;font-size:.7rem;font-weight:700; }
+  .brand-si  { background:#dcfce7;color:#15803d; }
+  .brand-no  { background:#f1f5f9;color:#94a3b8; }
+
+  .local-link { background:none;border:none;cursor:pointer;color:var(--red);font-weight:700;font-size:inherit;padding:0;text-align:left;text-decoration:underline;text-underline-offset:2px; }
+  .local-link:hover { color:var(--red-dark); }
+
+  .loading-bar { height:3px;background:linear-gradient(90deg,var(--red),var(--gold));animation:lb 1.4s ease-in-out infinite;transform-origin:left; }
+  @keyframes lb { 0%{transform:scaleX(0)} 60%{transform:scaleX(.8)} 100%{transform:scaleX(1)} }
+
+  .spinner { display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  .modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center;padding:1rem; }
+  .modal { background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;border-top:4px solid var(--red); }
+
+  table { width:100%;border-collapse:collapse; }
+  thead th { background:var(--cream);padding:9px 12px;text-align:left;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:2px solid var(--border);cursor:pointer;white-space:nowrap;user-select:none; }
+  thead th:hover { background:var(--cream-2); }
+  tbody td { padding:9px 12px;border-bottom:1px solid var(--cream);font-size:.845rem; }
+  tbody tr:hover { background:var(--cream); }
+  tbody tr:last-child td { border-bottom:none; }
+
+  input,select { width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:.875rem;outline:none;transition:border-color .15s,box-shadow .15s;background:#fff; }
+  input:focus,select:focus { border-color:var(--red);box-shadow:0 0 0 3px rgba(139,23,20,.12); }
+
+  #report-output h1 { font-family:'Playfair Display',serif;font-size:1.25rem;font-weight:700;color:var(--red);margin:1em 0 .4em; }
+  #report-output h2 { font-size:1rem;font-weight:700;border-bottom:2px solid var(--border);padding-bottom:4px;margin:1em 0 .4em; }
+  #report-output h3 { font-size:.9rem;font-weight:700;color:var(--muted);margin:.8em 0 .3em; }
+  #report-output p  { margin-bottom:.65em;line-height:1.7; }
+  #report-output ul,#report-output ol { padding-left:1.4em;margin-bottom:.65em; }
+  #report-output li { margin-bottom:.2em;line-height:1.6; }
+  #report-output strong { font-weight:700; }
+
+  ::-webkit-scrollbar { width:5px;height:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border);border-radius:3px; }
+
+  .active-period { background:var(--red) !important;color:#fff !important;border-color:var(--red) !important; }
+
+  h1,h2,h3,.heading { font-family:'Playfair Display',serif; }
+
+  @media(max-width:768px){
+    .charts-grid { grid-template-columns:1fr !important; }
+    .stats-grid  { grid-template-columns:repeat(2,1fr) !important; }
+    .hide-sm { display:none !important; }
+    .det-charts-grid { grid-template-columns:1fr !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── CONFIG MODAL ──────────────────────────────────────────── -->
+<div id="modal" class="modal-backdrop" style="display:none">
+  <div class="modal p-6">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <h2 style="font-family:'Playfair Display',serif;font-size:1.15rem;font-weight:700;color:var(--red)">Configuración</h2>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:2px">URL del sheet y API key de Anthropic</p>
+      </div>
+      <button onclick="closeModal()" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:6px">URL de Google Sheets (CSV)</label>
+        <input id="inp-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
+        <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Archivo → Compartir → Publicar en la web → CSV</p>
+      </div>
+      <div>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:6px">API Key de Anthropic</label>
+        <input id="inp-key" type="password" placeholder="sk-ant-...">
+        <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Solo para reportes con IA · console.anthropic.com</p>
+      </div>
+      <div style="display:flex;gap:10px;padding-top:4px">
+        <button class="btn btn-blue" onclick="saveAndLoad()" style="flex:1">Guardar y cargar datos</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LOADING BAR ───────────────────────────────────────────── -->
+<div id="lbar" style="height:3px;display:none"><div class="loading-bar w-full"></div></div>
+
+<!-- ── NAVBAR ────────────────────────────────────────────────── -->
+<nav style="background:#fff;border-bottom:3px solid var(--red);position:sticky;top:0;z-index:40;box-shadow:0 2px 8px rgba(139,23,20,.10)">
+  <div style="max-width:1400px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:14px">
+      <img src="https://arrivata.com.ar/wp-content/uploads/2020/05/logo-arrivata.png" alt="Arrivata" style="height:46px;object-fit:contain;display:block">
+      <div style="border-left:1px solid var(--border);padding-left:14px">
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:.9rem;color:var(--red);line-height:1.1">Dashboard de Presencia</div>
+        <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em;margin-top:1px">en Góndola</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="sync-label" style="font-size:.7rem;color:var(--muted)"></span>
+      <button class="btn btn-ghost" onclick="loadData()" style="padding:6px 12px;font-size:.8rem">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        Actualizar
+      </button>
+      <button class="btn btn-ghost" onclick="openLocales()" style="padding:6px 14px;font-size:.8rem">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Locales
+      </button>
+      <button class="btn btn-blue" onclick="openModal()" style="padding:6px 14px;font-size:.8rem">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Configurar
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- ── MAIN DASHBOARD ───────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="main-view">
+<main style="max-width:1400px;margin:0 auto;padding:24px">
+
+  <!-- Empty state -->
+  <div id="empty" style="text-align:center;padding:80px 20px">
+    <div style="font-size:3.5rem;margin-bottom:16px">📊</div>
+    <h2 style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--red);margin-bottom:8px">Arrivata Dashboard</h2>
+    <p style="color:var(--muted);margin-bottom:24px">Cargando datos del Google Sheet...</p>
+    <div id="empty-error" style="display:none;margin-top:12px">
+      <p id="empty-error-msg" style="color:#dc2626;font-size:.875rem;margin-bottom:12px;white-space:pre-wrap"></p>
+      <button class="btn btn-blue" onclick="openModal()">Configurar URL</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dash" style="display:none">
+
+    <!-- Period filter -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+      <span style="font-size:.8rem;font-weight:700;color:var(--muted)">Período:</span>
+      <button class="btn btn-ghost period-btn active-period" data-days="7"  onclick="setPeriod(7)"  style="padding:5px 14px;font-size:.8rem">Última semana</button>
+      <button class="btn btn-ghost period-btn"               data-days="30" onclick="setPeriod(30)" style="padding:5px 14px;font-size:.8rem">Último mes</button>
+      <button class="btn btn-ghost period-btn"               data-days="0"  onclick="setPeriod(0)"  style="padding:5px 14px;font-size:.8rem">Todo</button>
+      <span id="period-label" style="font-size:.75rem;color:var(--muted);margin-left:4px"></span>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px">
+      <div class="card stat-card" style="padding:16px">
+        <div style="width:36px;height:36px;border-radius:9px;background:#F9EDED;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B1714" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <div id="s-visitas" style="font-size:1.5rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px;font-weight:700">Visitas</div>
+      </div>
+      <div class="card stat-card" style="padding:16px">
+        <div style="width:36px;height:36px;border-radius:9px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div id="s-con" style="font-size:1.5rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px;font-weight:700">Con Arrivata</div>
+      </div>
+      <div class="card stat-card" style="padding:16px">
+        <div style="width:36px;height:36px;border-radius:9px;background:#FBF5E9;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#A07830" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div id="s-cob" style="font-size:1.5rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px;font-weight:700">Cobertura</div>
+      </div>
+      <div class="card stat-card" style="padding:16px">
+        <div style="width:36px;height:36px;border-radius:9px;background:#F9EDED;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B1714" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        </div>
+        <div id="s-locales" style="font-size:1.5rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px;font-weight:700">Locales únicos</div>
+      </div>
+      <div class="card stat-card" style="padding:16px">
+        <div style="width:36px;height:36px;border-radius:9px;background:#FBF5E9;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#A07830" stroke-width="2"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        </div>
+        <div id="s-zonas" style="font-size:1.5rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px;font-weight:700">Zonas</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px">
+      <div class="card" style="padding:18px">
+        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Presencia por Marca</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:14px">% de visitas con presencia en góndola</div>
+        <div style="position:relative;height:220px"><canvas id="chart-marcas"></canvas></div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Arrivata por Zona</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:14px">% de visitas con Arrivata presente</div>
+        <div style="position:relative;height:220px"><canvas id="chart-zonas"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card" style="margin-bottom:22px">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+        <div>
+          <span style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Locales</span>
+          <span id="tbl-count" style="font-size:.72rem;color:var(--muted);margin-left:8px"></span>
+          <span style="font-size:.72rem;color:var(--muted);margin-left:4px">· Hacé clic en el nombre para ver detalle</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <div style="position:relative">
+            <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#94a3b8" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="srch" type="text" placeholder="Buscar local..." oninput="renderTable()" style="padding-left:30px;width:170px">
+          </div>
+          <select id="f-zona"     onchange="renderTable()" style="width:150px"><option value="">Todas las zonas</option></select>
+          <select id="f-arrivata" onchange="renderTable()" style="width:145px">
+            <option value="">Todas</option>
+            <option value="si">Con Arrivata</option>
+            <option value="no">Sin Arrivata</option>
+          </select>
+          <button class="btn btn-ghost" onclick="clearFilters()" style="padding:6px 10px;font-size:.8rem">Limpiar</button>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="sortBy('fecha')">Fecha<span id="si-fecha"></span></th>
+              <th onclick="sortBy('local')">Local<span id="si-local"></span></th>
+              <th onclick="sortBy('zona')">Zona<span id="si-zona"></span></th>
+              <th>Arrivata</th>
+              <th class="hide-sm">Festa</th>
+              <th class="hide-sm">WAPI</th>
+              <th class="hide-sm">Cuisine</th>
+              <th class="hide-sm">Carrefour</th>
+              <th>Ubicación</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+
+      <div style="padding:10px 18px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+        <span id="pg-info" style="font-size:.72rem;color:#94a3b8"></span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="btn-prev" class="btn btn-ghost" onclick="prevPage()" style="padding:4px 10px;font-size:.78rem">← Anterior</button>
+          <span id="pg-label" style="font-size:.78rem;color:#475569;min-width:80px;text-align:center"></span>
+          <button id="btn-next" class="btn btn-ghost" onclick="nextPage()" style="padding:4px 10px;font-size:.78rem">Siguiente →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reports -->
+    <div class="card" style="padding:18px">
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Reporte con IA</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Análisis generado con Claude (Anthropic) · necesita API key</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="btn-sem" class="btn btn-blue" onclick="generateReport('semanal')" style="font-size:.82rem">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Reporte Semanal
+          </button>
+          <button id="btn-men" class="btn btn-purple" onclick="generateReport('mensual')" style="font-size:.82rem">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Reporte Mensual
+          </button>
+        </div>
+      </div>
+      <div id="no-key-warn" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.82rem;color:#991b1b;margin-bottom:10px">
+        🔑 No hay API key configurada. Hacé clic en <strong>Configurar</strong> (engranaje arriba) e ingresá tu key de Anthropic para poder generar reportes.
+      </div>
+      <div id="cors-warn" style="display:none;padding:10px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:.82rem;color:#92400e;margin-bottom:10px">
+        ⚠️ Para reportes ejecutá <code style="background:#fef3c7;padding:1px 5px;border-radius:4px;font-family:monospace;font-size:.8rem">python server.py</code> y abrí <code style="background:#fef3c7;padding:1px 5px;border-radius:4px;font-family:monospace;font-size:.8rem">http://localhost:8080</code>
+      </div>
+      <div id="api-err-warn" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.82rem;color:#991b1b;margin-bottom:10px"></div>
+      <div id="report-wrap" style="display:none;border-top:1px solid #f1f5f9;padding-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span id="report-title" style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);font-size:.88rem"></span>
+          <button class="btn btn-ghost" id="btn-copy" onclick="copyReport()" style="padding:4px 10px;font-size:.75rem">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copiar
+          </button>
+        </div>
+        <div id="report-output" style="background:var(--cream);border-radius:8px;padding:16px;max-height:440px;overflow-y:auto;font-size:.855rem;color:var(--text);line-height:1.65"></div>
+      </div>
+    </div>
+
+  </div><!-- /dash -->
+</main>
+</div><!-- /main-view -->
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- ── DETALLE DE LOCAL ──────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="detail-view" style="display:none;background:#f1f5f9;min-height:100vh">
+  <div style="max-width:1400px;margin:0 auto;padding:24px">
+
+    <!-- Topbar -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap">
+      <button id="det-back-btn" class="btn btn-ghost" onclick="closeDetail()" style="font-size:.85rem;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Volver al dashboard
+      </button>
+      <select id="det-selector" onchange="openDetail(this.value)" style="width:auto;min-width:240px;font-weight:500;flex:1;max-width:400px">
+      </select>
+    </div>
+
+    <!-- Period filter (detail) -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+      <span style="font-size:.8rem;font-weight:600;color:#64748b">Ver:</span>
+      <button class="btn btn-ghost det-period-btn" data-days="7"  onclick="applyDetailPeriod(7)"  style="padding:5px 14px;font-size:.8rem">Última semana</button>
+      <button class="btn btn-ghost det-period-btn" data-days="30" onclick="applyDetailPeriod(30)" style="padding:5px 14px;font-size:.8rem">Último mes</button>
+      <button class="btn btn-ghost det-period-btn" data-days="0"  onclick="applyDetailPeriod(0)"  style="padding:5px 14px;font-size:.8rem">Todo</button>
+      <span id="det-period-label" style="font-size:.75rem;color:#94a3b8;margin-left:4px"></span>
+      <div style="width:1px;height:22px;background:#e2e8f0;margin:0 6px;align-self:center"></div>
+      <span style="font-size:.8rem;color:#64748b;white-space:nowrap">Últimas</span>
+      <input id="det-count-input" type="number" min="1" max="999" placeholder="N"
+        style="width:56px!important;padding:5px 8px;border-radius:8px;border:1px solid #e2e8f0;font-size:.8rem;text-align:center;outline:none"
+        onkeydown="if(event.key==='Enter') applyDetailCount()">
+      <span style="font-size:.8rem;color:#64748b;white-space:nowrap">visitas</span>
+      <button id="btn-det-count" class="btn btn-ghost" onclick="applyDetailCount()" style="padding:5px 12px;font-size:.8rem">Ver</button>
+    </div>
+
+    <!-- Header card -->
+    <div class="card" style="padding:20px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <h2 id="det-name" style="font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:var(--red);margin-bottom:4px"></h2>
+          <div id="det-ubic" style="font-size:.82rem;color:var(--muted)"></div>
+          <div id="det-zona-lbl" style="display:inline-block;margin-top:8px;background:#F9EDED;color:var(--red);border-radius:999px;padding:2px 12px;font-size:.75rem;font-weight:700"></div>
+        </div>
+        <div style="text-align:right">
+          <div id="det-status-badge" style="margin-bottom:6px"></div>
+          <div id="det-ultima-lbl" style="font-size:.75rem;color:var(--muted)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+      <div class="card" style="padding:16px">
+        <div id="det-n-visitas" style="font-size:1.6rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px">Total visitas</div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div id="det-primera" style="font-size:1rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px">Primera relevada</div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div id="det-ultima" style="font-size:1rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px">Última relevada</div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div id="det-prods-last" style="font-size:1.1rem;font-weight:700;color:var(--text)">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px">Productos en última visita</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="det-charts-grid" style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">
+      <!-- Line: evolution -->
+      <div class="card" style="padding:18px">
+        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Evolución de productos Arrivata</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:14px">Unidades en góndola por visita (todos los datos históricos)</div>
+        <div id="det-line-msg" style="display:none;padding:40px;text-align:center;color:var(--muted);font-size:.85rem"></div>
+        <div id="det-line-wrap" style="position:relative;height:300px"><canvas id="det-chart-line"></canvas></div>
+      </div>
+      <!-- Bar: last visit -->
+      <div class="card" style="padding:18px">
+        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Última visita — por producto</div>
+        <div id="det-bar-fecha" style="font-size:.7rem;color:var(--muted);margin-bottom:14px"></div>
+        <div id="det-bar-msg" style="display:none;padding:40px;text-align:center;color:var(--muted);font-size:.85rem">Sin datos Arrivata registrados</div>
+        <div id="det-bar-wrap" style="position:relative;height:300px"><canvas id="det-chart-bar"></canvas></div>
+      </div>
+    </div>
+
+    <!-- History table -->
+    <div class="card">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">
+        Historial de visitas
+        <span id="det-hist-count" style="font-family:'Lato',sans-serif;font-size:.72rem;color:var(--muted);font-weight:400;margin-left:8px"></span>
+      </div>
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+        <table>
+          <thead id="det-thead"></thead>
+          <tbody id="det-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- ── PÁGINA LOCALES ────────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="locales-view" style="display:none;background:#f1f5f9;min-height:100vh">
+  <div style="max-width:1400px;margin:0 auto;padding:24px">
+
+    <!-- Topbar -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="closeLocales()" style="font-size:.85rem;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Dashboard
+      </button>
+      <div>
+        <span style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--red)">Locales</span>
+        <span style="font-size:.75rem;color:var(--muted);margin-left:10px">Valoración basada en el último mes · Hacé clic en un local para ver el detalle</span>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+      <div style="position:relative;flex:1;max-width:220px">
+        <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#94a3b8" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="loc-srch" type="text" placeholder="Buscar local..." oninput="renderLocalesGrid()" style="padding-left:30px">
+      </div>
+      <select id="loc-zona" onchange="renderLocalesGrid()" style="width:160px"><option value="">Todas las zonas</option></select>
+      <select id="loc-sort" onchange="renderLocalesGrid()" style="width:210px">
+        <option value="score-desc">Mayor valoración primero</option>
+        <option value="score-asc">Menor valoración primero</option>
+        <option value="name-asc">Nombre A → Z</option>
+        <option value="visits-desc">Más visitas primero</option>
+      </select>
+      <span id="loc-count-lbl" style="font-size:.78rem;color:var(--muted)"></span>
+    </div>
+
+    <!-- Leyenda score -->
+    <div style="display:flex;gap:16px;margin-bottom:18px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted)">
+        <div style="width:10px;height:10px;border-radius:50%;background:#16a34a"></div> 8–10 Excelente
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted)">
+        <div style="width:10px;height:10px;border-radius:50%;background:#d97706"></div> 5–7 Regular
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted)">
+        <div style="width:10px;height:10px;border-radius:50%;background:#dc2626"></div> 1–4 Baja
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted)">
+        <div style="width:10px;height:10px;border-radius:50%;background:var(--border)"></div> Sin datos
+      </div>
+    </div>
+
+    <!-- Grid de locales -->
+    <div id="loc-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px"></div>
+
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────
+const DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSOqs1_WaTUPxjglZqkpWQFfoHtNtJhIvMr3sATF2_B8m2XmKFZa4Kx4mhoE9lqcg/pub?output=csv';
+
+const BRAND_SUFFIXES = {
+  ARRIVATA:  [' AR'],
+  FESTA:     [' FES'],
+  WAPI:      [' WA'],
+  CUISINE:   [' CUI'],
+  CARREFOUR: [' CARRE']
+};
+const BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUISINE:'#A07830', CARREFOUR:'#0d9488' };
+
+const PROD_COLORS = [
+  '#8B1714','#A07830','#16a34a','#d97706','#0d9488',
+  '#be185d','#0284c7','#65a30d','#c2410c','#6D1010',
+  '#7D5E24','#0891b2'
+];
+
+// ── State ────────────────────────────────────────────────────
+const app = {
+  cfg: { url: DEFAULT_URL, key: '' },
+  raw: [],
+  brandCols: { ARRIVATA:[], FESTA:[], WAPI:[], CUISINE:[], CARREFOUR:[] },
+  periodDays: 7,
+  _periodData: [],
+  sortField:'fecha', sortDir:'desc',
+  page:1, pageSize:25,
+  reportText:'',
+  detPeriodDays: 0,
+  detFilterMode: 'period',
+  _detAllVisits: [],
+  _detFrom: 'main',
+  charts: {},
+  detCharts: {}
+};
+
+// ── Boot ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('arrivata_v2');
+  if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
+  document.getElementById('inp-url').value = app.cfg.url;
+  document.getElementById('inp-key').value = app.cfg.key || '';
+  loadData();
+
+  // Delegate click for local-link buttons inside main table
+  document.getElementById('tbl-body').addEventListener('click', e => {
+    const btn = e.target.closest('.local-link');
+    if (btn) openDetail(btn.dataset.local, 'main');
+  });
+
+  // Delegate click for local cards inside locales grid
+  document.getElementById('loc-grid').addEventListener('click', e => {
+    const card = e.target.closest('.local-card');
+    if (card) openDetail(card.dataset.local, 'locales');
+  });
+});
+
+// ── Modal ────────────────────────────────────────────────────
+function openModal(){ document.getElementById('inp-url').value=app.cfg.url; document.getElementById('inp-key').value=app.cfg.key||''; document.getElementById('modal').style.display='flex'; }
+function closeModal(){ document.getElementById('modal').style.display='none'; }
+function saveAndLoad(){
+  app.cfg.url = document.getElementById('inp-url').value.trim() || DEFAULT_URL;
+  app.cfg.key = document.getElementById('inp-key').value.trim();
+  localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
+  const noKeyEl=document.getElementById('no-key-warn');
+  if(noKeyEl) noKeyEl.style.display='none';
+  closeModal(); loadData();
+}
+
+// ── Load Data ────────────────────────────────────────────────
+function loadData(){
+  setLoading(true);
+  document.getElementById('empty-error').style.display='none';
+  Papa.parse(app.cfg.url, {
+    download:true, header:false,
+    complete(res){
+      const rows = res.data;
+      const hIdx = rows.findIndex(r => String(r[0]||'').trim().toUpperCase()==='FECHA');
+      if(hIdx===-1){ showError('No se encontró la fila de encabezados.\nVerificá que la primera columna de datos sea "FECHA".'); setLoading(false); return; }
+
+      const headers = rows[hIdx].map(h=>String(h||'').trim());
+      app.brandCols = detectBrands(headers);
+
+      app.raw = rows.slice(hIdx+1)
+        .filter(r => String(r[0]||'').trim().length>0)
+        .map(r => {
+          const obj={};
+          headers.forEach((h,i)=>{ obj[h]=String(r[i]||'').trim(); });
+          obj._zona = extractZona(obj['Ubicación']||obj['Ubicacion']||'');
+          return obj;
+        });
+
+      populateZonaFilter();
+      setPeriod(app.periodDays, false);
+      document.getElementById('empty').style.display='none';
+      document.getElementById('dash').style.display='block';
+      document.getElementById('sync-label').textContent =
+        'Actualizado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      setLoading(false);
+    },
+    error(e){
+      showError('No se pudo cargar el Google Sheet.\n\nVerificá que la URL esté publicada como CSV y tenés conexión a internet.\n\n('+( e.message||e.type||'error de red')+')');
+      setLoading(false);
+    }
+  });
+}
+
+function detectBrands(headers){
+  const brands={ARRIVATA:[],FESTA:[],WAPI:[],CUISINE:[],CARREFOUR:[]};
+  headers.forEach(h=>{
+    if(!h) return;
+    const u=h.toUpperCase();
+    for(const [brand,suffixes] of Object.entries(BRAND_SUFFIXES)){
+      if(suffixes.some(s=>u.endsWith(s))){ brands[brand].push(h); break; }
+    }
+  });
+  return brands;
+}
+function extractZona(ub){ const i=ub.lastIndexOf('/'); return i===-1?ub.toUpperCase().trim()||'—':ub.slice(i+1).trim().toUpperCase()||'—'; }
+
+// ── Period ───────────────────────────────────────────────────
+function setPeriod(days){
+  app.periodDays=days; app.page=1;
+  document.querySelectorAll('.period-btn').forEach(b=>{
+    const d=parseInt(b.dataset.days);
+    b.classList.toggle('active-period',d===days);
+    b.classList.toggle('btn-ghost',d!==days);
+  });
+  const filtered = days===0 ? app.raw : app.raw.filter(r=>{ const d=parseDate(r['FECHA']); return d&&d>=new Date(Date.now()-days*864e5); });
+  const dates = filtered.map(r=>parseDate(r['FECHA'])).filter(Boolean);
+  if(dates.length){
+    const mn=new Date(Math.min(...dates)), mx=new Date(Math.max(...dates));
+    document.getElementById('period-label').textContent = fmtDate(mn)+' – '+fmtDate(mx)+' ('+filtered.length+' visitas)';
+  } else { document.getElementById('period-label').textContent=''; }
+  app._periodData=filtered;
+  updateStats(filtered);
+  updateCharts(filtered);
+  renderTable();
+}
+
+// ── Stats ────────────────────────────────────────────────────
+function hasPresence(row,brand){ return app.brandCols[brand].some(c=>{ const v=String(row[c]||'').trim(); return v!==''&&v!=='0'; }); }
+
+function updateStats(data){
+  const n=data.length, con=data.filter(r=>hasPresence(r,'ARRIVATA')).length;
+  document.getElementById('s-visitas').textContent=n;
+  document.getElementById('s-con').textContent=con;
+  document.getElementById('s-cob').textContent=n?Math.round(con/n*100)+'%':'—';
+  document.getElementById('s-locales').textContent=new Set(data.map(r=>r['Local']).filter(Boolean)).size;
+  document.getElementById('s-zonas').textContent=new Set(data.map(r=>r._zona).filter(z=>z&&z!=='—')).size;
+}
+
+// ── Charts (main) ────────────────────────────────────────────
+function updateCharts(data){
+  const brandData=Object.keys(app.brandCols).map(b=>({brand:b,pct:data.length?Math.round(data.filter(r=>hasPresence(r,b)).length/data.length*100):0})).sort((a,b)=>b.pct-a.pct);
+  buildMainChart('chart-marcas',brandData.map(d=>d.brand),brandData.map(d=>d.pct),brandData.map(d=>BRAND_COLORS[d.brand]||'#94a3b8'));
+
+  const zones={};
+  data.forEach(r=>{ const z=r._zona||'—'; zones[z]=zones[z]||{t:0,on:0}; zones[z].t++; if(hasPresence(r,'ARRIVATA')) zones[z].on++; });
+  const zd=Object.entries(zones).map(([z,v])=>({zona:z,pct:v.t?Math.round(v.on/v.t*100):0,t:v.t})).filter(d=>d.zona!=='—'&&d.t>=2).sort((a,b)=>b.pct-a.pct).slice(0,12);
+  buildMainChart('chart-zonas',zd.map(d=>d.zona),zd.map(d=>d.pct),zd.map(d=>d.pct>=70?'#16a34a':d.pct>=40?'#f59e0b':'#ef4444'));
+}
+
+function buildMainChart(id,labels,values,colors){
+  if(app.charts[id]) app.charts[id].destroy();
+  app.charts[id]=new Chart(document.getElementById(id),{
+    type:'bar',
+    data:{labels,datasets:[{data:values,backgroundColor:colors,borderRadius:5,borderSkipped:false}]},
+    options:{
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%`}}},
+      scales:{x:{max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}},y:{ticks:{font:{size:10},color:'#7B6A55'},grid:{display:false}}}
+    }
+  });
+}
+
+// ── Table (main) ─────────────────────────────────────────────
+function populateZonaFilter(){
+  const zonas=[...new Set(app.raw.map(r=>r._zona).filter(z=>z&&z!=='—'))].sort();
+  const sel=document.getElementById('f-zona'); const cur=sel.value;
+  sel.innerHTML='<option value="">Todas las zonas</option>'+zonas.map(z=>`<option value="${esc(z)}">${esc(z)}</option>`).join('');
+  sel.value=cur;
+}
+
+function getFiltered(){
+  const srch=document.getElementById('srch').value.toLowerCase();
+  const zona=document.getElementById('f-zona').value;
+  const arr=document.getElementById('f-arrivata').value;
+  return (app._periodData||app.raw).filter(r=>{
+    if(zona&&r._zona!==zona) return false;
+    if(arr==='si'&&!hasPresence(r,'ARRIVATA')) return false;
+    if(arr==='no'&&hasPresence(r,'ARRIVATA')) return false;
+    if(srch){ const hay=[r['Local'],r._zona,r['Ubicación']||r['Ubicacion']].filter(Boolean).join(' ').toLowerCase(); if(!hay.includes(srch)) return false; }
+    return true;
+  });
+}
+
+function sortBy(field){ if(app.sortField===field) app.sortDir=app.sortDir==='asc'?'desc':'asc'; else{app.sortField=field;app.sortDir='asc';} app.page=1; renderTable(); }
+
+function renderTable(){
+  const rows=getFiltered();
+  const keyMap={fecha:'FECHA',local:'Local',zona:'_zona'};
+  const key=keyMap[app.sortField]||'FECHA';
+  const sorted=[...rows].sort((a,b)=>{
+    const av=String(a[key]||''),bv=String(b[key]||'');
+    const cmp=app.sortField==='fecha'?(parseDate(av)||0)-(parseDate(bv)||0):av.localeCompare(bv,'es');
+    return app.sortDir==='asc'?cmp:-cmp;
+  });
+  ['fecha','local','zona'].forEach(f=>{ const el=document.getElementById('si-'+f); if(el) el.textContent=app.sortField===f?(app.sortDir==='asc'?' ↑':' ↓'):''; });
+
+  const total=sorted.length, start=(app.page-1)*app.pageSize, end=Math.min(start+app.pageSize,total);
+  const page=sorted.slice(start,end);
+  const brands=['ARRIVATA','FESTA','WAPI','CUISINE','CARREFOUR'];
+
+  const tbody=document.getElementById('tbl-body');
+  if(!page.length){
+    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:#7B6A55">Sin resultados</td></tr>';
+  } else {
+    tbody.innerHTML=page.map(r=>{
+      const brandCells=brands.map(b=>`<td><span class="badge-sm ${hasPresence(r,b)?'brand-si':'brand-no'}">${hasPresence(r,b)?'✓':'—'}</span></td>`).join('');
+      const localName=r['Local']||'';
+      const localCell=localName
+        ? `<button class="local-link" data-local="${esc(localName)}">${esc(localName)}</button>`
+        : '<span style="color:#C5B49A">—</span>';
+      return `<tr>
+        <td style="color:#7B6A55;white-space:nowrap">${esc(r['FECHA']||'—')}</td>
+        <td>${localCell}</td>
+        <td><span style="font-size:.78rem;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-weight:500">${esc(r._zona||'—')}</span></td>
+        ${brandCells}
+        <td style="font-size:.72rem;color:#7B6A55">${esc(r['Ubicación']||r['Ubicacion']||'')}</td>
+      </tr>`;
+    }).join('');
+  }
+  document.getElementById('tbl-count').textContent=total+' registros';
+  document.getElementById('pg-info').textContent=total?`${start+1}–${end} de ${total}`:'0 registros';
+  document.getElementById('pg-label').textContent=`Pág. ${app.page} / ${Math.max(1,Math.ceil(total/app.pageSize))}`;
+  document.getElementById('btn-prev').disabled=app.page<=1;
+  document.getElementById('btn-next').disabled=end>=total;
+}
+
+function prevPage(){ if(app.page>1){ app.page--; renderTable(); } }
+function nextPage(){ const max=Math.ceil(getFiltered().length/app.pageSize); if(app.page<max){ app.page++; renderTable(); } }
+function clearFilters(){ document.getElementById('srch').value=''; document.getElementById('f-zona').value=''; document.getElementById('f-arrivata').value=''; app.page=1; renderTable(); }
+
+// ══════════════════════════════════════════════════════════════
+// ── DETALLE DE LOCAL ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function parseQty(v){ if(!v||String(v).trim()==='') return 0; const n=parseInt(String(v).replace(/[^0-9]/g,'')); return isNaN(n)?0:n; }
+function colLabel(col){ return col.replace(/\s*AR$/i,'').trim(); }
+
+function openDetail(localName, from='main'){
+  if(!localName) return;
+  app._detFrom = from;
+
+  const visits=[...app.raw]
+    .filter(r=>r['Local']===localName)
+    .sort((a,b)=>{ const da=parseDate(a['FECHA']),db=parseDate(b['FECHA']); return (da||new Date(0))-(db||new Date(0)); });
+
+  if(!visits.length) return;
+
+  // Store all visits for this local — filtering is done per-period
+  app._detAllVisits=visits;
+
+  // Static header (doesn't change with period)
+  const lastVisitAll=visits[visits.length-1];
+  document.getElementById('det-name').textContent=localName;
+  document.getElementById('det-ubic').textContent=lastVisitAll['Ubicación']||lastVisitAll['Ubicacion']||'';
+  document.getElementById('det-zona-lbl').textContent=visits[0]._zona||'—';
+
+  // Populate selector
+  const allLocals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  const sel=document.getElementById('det-selector');
+  sel.innerHTML=allLocals.map(l=>`<option value="${esc(l)}"${l===localName?' selected':''}>${esc(l)}</option>`).join('');
+
+  // Update back button text
+  const backBtn = document.getElementById('det-back-btn');
+  if (backBtn) backBtn.childNodes[backBtn.childNodes.length-1].textContent = from==='locales' ? ' Volver a Locales' : ' Volver al dashboard';
+
+  // Hide all views, show detail
+  document.getElementById('main-view').style.display='none';
+  document.getElementById('locales-view').style.display='none';
+  document.getElementById('detail-view').style.display='block';
+  window.scrollTo(0,0);
+
+  // Reset to "Todo" when opening a new local
+  app.detPeriodDays=0;
+  app.detFilterMode='period';
+  applyDetailPeriod(0);
+}
+
+function applyDetailPeriod(days){
+  app.detPeriodDays=days;
+  app.detFilterMode='period';
+
+  // Reset count button style
+  const btnCount=document.getElementById('btn-det-count');
+  if(btnCount){ btnCount.classList.remove('btn-blue'); btnCount.classList.add('btn-ghost'); }
+
+  // Update period buttons
+  document.querySelectorAll('.det-period-btn').forEach(b=>{
+    const d=parseInt(b.dataset.days);
+    b.classList.toggle('active-period', d===days);
+    b.classList.toggle('btn-ghost', d!==days);
+  });
+
+  // Filter visits
+  const visits=days===0
+    ? app._detAllVisits
+    : app._detAllVisits.filter(v=>{ const d=parseDate(v['FECHA']); return d&&d>=new Date(Date.now()-days*864e5); });
+
+  // Period label
+  const dates=visits.map(v=>parseDate(v['FECHA'])).filter(Boolean);
+  if(dates.length){
+    const mn=new Date(Math.min(...dates)), mx=new Date(Math.max(...dates));
+    document.getElementById('det-period-label').textContent=fmtDate(mn)+' – '+fmtDate(mx)+' ('+visits.length+' visita'+(visits.length!==1?'s':'')+')';
+  } else {
+    document.getElementById('det-period-label').textContent='Sin visitas en este período';
+  }
+
+  const arrCols=app.brandCols.ARRIVATA;
+  updateDetailStats(visits, arrCols);
+
+  const activeCols=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0));
+  const lastVisit=visits[visits.length-1]||{};
+
+  renderDetailLine(visits, activeCols);
+  renderDetailBar(lastVisit, activeCols, arrCols);
+  renderDetailTable(visits, arrCols);
+}
+
+function closeDetail(){
+  document.getElementById('detail-view').style.display='none';
+  if(app._detFrom==='locales'){
+    document.getElementById('locales-view').style.display='block';
+  } else {
+    document.getElementById('main-view').style.display='block';
+  }
+}
+
+function renderDetailLine(visits, activeCols){
+  const lineWrap=document.getElementById('det-line-wrap');
+  const lineMsg=document.getElementById('det-line-msg');
+  if(app.detCharts.line){ app.detCharts.line.destroy(); app.detCharts.line=null; }
+
+  if(visits.length===0){
+    lineWrap.style.display='none'; lineMsg.style.display='block';
+    lineMsg.textContent='Sin visitas en el período seleccionado.';
+    return;
+  }
+  if(activeCols.length===0){
+    lineWrap.style.display='none'; lineMsg.style.display='block';
+    lineMsg.textContent='No se registraron productos Arrivata en este período.';
+    return;
+  }
+  if(visits.length<2){
+    lineWrap.style.display='none'; lineMsg.style.display='block';
+    lineMsg.textContent='Solo hay 1 visita registrada. Se necesitan al menos 2 para ver la evolución.';
+    return;
+  }
+  lineWrap.style.display='block'; lineMsg.style.display='none';
+
+  const labels=visits.map(v=>v['FECHA']);
+  const datasets=activeCols.map((col,i)=>({
+    label: colLabel(col),
+    data: visits.map(v=>parseQty(v[col])),
+    borderColor: PROD_COLORS[i%PROD_COLORS.length],
+    backgroundColor: PROD_COLORS[i%PROD_COLORS.length]+'20',
+    tension:.35, fill:false, pointRadius:4, pointHoverRadius:7, borderWidth:2
+  }));
+
+  app.detCharts.line=new Chart(document.getElementById('det-chart-line'),{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'bottom', labels:{ font:{size:10}, boxWidth:10, padding:10 } },
+        tooltip:{ mode:'index', intersect:false }
+      },
+      scales:{
+        x:{ ticks:{font:{size:9},maxRotation:45,color:'#7B6A55'}, grid:{color:'#F3ECD9'} },
+        y:{ beginAtZero:true, ticks:{font:{size:10},precision:0,color:'#7B6A55'}, grid:{color:'#F3ECD9'} }
+      }
+    }
+  });
+}
+
+function renderDetailBar(lastVisit, activeCols, allArrCols){
+  const barWrap=document.getElementById('det-bar-wrap');
+  const barMsg=document.getElementById('det-bar-msg');
+  if(app.detCharts.bar){ app.detCharts.bar.destroy(); app.detCharts.bar=null; }
+
+  document.getElementById('det-bar-fecha').textContent=lastVisit['FECHA']?'Visita del '+lastVisit['FECHA']:'';
+
+  if(!lastVisit['FECHA']||activeCols.length===0){
+    barWrap.style.display='none'; barMsg.style.display='block';
+    barMsg.textContent=!lastVisit['FECHA']?'Sin visitas en el período seleccionado.':'Sin datos Arrivata registrados.';
+    return;
+  }
+  barWrap.style.display='block'; barMsg.style.display='none';
+
+  const labels=activeCols.map(colLabel);
+  const data=activeCols.map(c=>parseQty(lastVisit[c]));
+  const colors=data.map(v=>v>0?'#8B1714':'#E5D9C4');
+  const borderColors=data.map(v=>v>0?'#1e40af':'#cbd5e1');
+
+  app.detCharts.bar=new Chart(document.getElementById('det-chart-bar'),{
+    type:'bar',
+    data:{labels,datasets:[{ data, backgroundColor:colors, borderColor:borderColors, borderWidth:1, borderRadius:5, borderSkipped:false }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.raw} unidades`+(lastVisit[activeCols[ctx.dataIndex]]?.includes('+')?'+':'') } }
+      },
+      scales:{
+        x:{ ticks:{font:{size:9},maxRotation:40}, grid:{display:false} },
+        y:{ beginAtZero:true, ticks:{font:{size:10},precision:0,color:'#7B6A55'}, grid:{color:'#F3ECD9'} }
+      }
+    }
+  });
+}
+
+function renderDetailTable(visits, arrCols){
+  // Only show Arrivata columns that were ever present in this period
+  const showCols=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0));
+
+  document.getElementById('det-hist-count').textContent=visits.length+' visita'+(visits.length!==1?'s':'');
+
+  const thead=document.getElementById('det-thead');
+  thead.innerHTML='<tr>'+
+    '<th style="cursor:default">Fecha</th>'+
+    '<th style="cursor:default">Día</th>'+
+    '<th style="cursor:default">Estado</th>'+
+    showCols.map(c=>`<th style="text-align:center;cursor:default">${esc(colLabel(c))}</th>`).join('')+
+    '</tr>';
+
+  if(!visits.length){
+    document.getElementById('det-thead').innerHTML='';
+    document.getElementById('det-tbody').innerHTML='<tr><td colspan="3" style="text-align:center;padding:32px;color:#7B6A55">Sin visitas en el período seleccionado</td></tr>';
+    return;
+  }
+
+  const sorted=[...visits].reverse();
+  document.getElementById('det-tbody').innerHTML=sorted.map(v=>{
+    const qtys=showCols.map(c=>parseQty(v[c]));
+    const hasAny=qtys.some(q=>q>0);
+    const cells=showCols.map((c,i)=>{
+      const q=qtys[i];
+      const raw=String(v[c]||'').trim();
+      return `<td style="text-align:center;font-weight:${q>0?'700':'400'};color:${q>0?'#8B1714':'#C5B49A'}">${q>0?esc(raw):'—'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="white-space:nowrap;font-weight:700;color:#7B6A55">${esc(v['FECHA']||'—')}</td>
+      <td style="font-size:.78rem;color:#C5B49A">${esc(v['DIA']||'')}</td>
+      <td><span class="${hasAny?'badge-si':'badge-no'}">${hasAny?'Presente':'Ausente'}</span></td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── REPORTS ──────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+async function generateReport(type){
+  const noKeyEl=document.getElementById('no-key-warn');
+  const corsEl=document.getElementById('cors-warn');
+  const apiErrEl=document.getElementById('api-err-warn');
+  noKeyEl.style.display='none'; corsEl.style.display='none'; apiErrEl.style.display='none';
+  if(!app.cfg.key){ noKeyEl.style.display='block'; return; }
+  const btnId=type==='semanal'?'btn-sem':'btn-men';
+  const btn=document.getElementById(btnId);
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Generando...';
+  document.getElementById('report-wrap').style.display='none';
+  try {
+    const payload={model:'claude-sonnet-4-6',max_tokens:2048,messages:[{role:'user',content:buildPrompt(type)}]};
+    const isLocal=['localhost','127.0.0.1'].includes(location.hostname);
+    let result;
+    if(isLocal){
+      const r=await fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:app.cfg.key,payload})});
+      if(!r.ok && r.status!==200){
+        let errBody; try{ errBody=await r.json(); }catch(ex){ errBody={error:{message:'HTTP '+r.status}}; }
+        throw new Error(errBody?.error?.message||'Error HTTP '+r.status);
+      }
+      result=await r.json();
+    } else {
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':app.cfg.key,'anthropic-version':'2023-06-01'},body:JSON.stringify(payload)});
+      result=await r.json();
+    }
+    if(result?.content?.[0]?.text){
+      app.reportText=result.content[0].text;
+      document.getElementById('report-title').textContent=type==='semanal'?'Reporte Semanal — '+new Date().toLocaleDateString('es-AR'):'Reporte Mensual — '+new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+      document.getElementById('report-output').innerHTML=marked.parse(app.reportText);
+      document.getElementById('report-wrap').style.display='block';
+    } else if(result?.error){
+      throw new Error(result.error.message||'Error de API');
+    } else {
+      throw new Error('Respuesta inesperada de la API: '+JSON.stringify(result).slice(0,120));
+    }
+  } catch(e){
+    if(e instanceof TypeError){
+      corsEl.style.display='block';
+    } else {
+      apiErrEl.textContent='Error: '+e.message;
+      apiErrEl.style.display='block';
+    }
+  } finally {
+    btn.disabled=false;
+    const ic='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+    document.getElementById('btn-sem').innerHTML=ic+' Reporte Semanal';
+    document.getElementById('btn-men').innerHTML=ic+' Reporte Mensual';
+  }
+}
+
+function buildPrompt(type){
+  const days=type==='semanal'?7:30;
+  const data=days===0?app.raw:app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=new Date(Date.now()-days*864e5);});
+  const n=data.length;
+  const brandStats=Object.keys(app.brandCols).map(b=>{const on=data.filter(r=>hasPresence(r,b)).length;return{marca:b,con:on,pct:n?Math.round(on/n*100):0};}).sort((a,b)=>b.pct-a.pct);
+  const zones={};
+  data.forEach(r=>{const z=r._zona||'—';zones[z]=zones[z]||{t:0,on:0};zones[z].t++;if(hasPresence(r,'ARRIVATA'))zones[z].on++;});
+  const zonaStats=Object.entries(zones).map(([z,v])=>({zona:z,total:v.t,con:v.on,pct:v.t?Math.round(v.on/v.t*100):0})).filter(d=>d.zona!=='—').sort((a,b)=>b.pct-a.pct);
+  const stats={periodo:type==='semanal'?'última semana':'último mes',totalVisitas:n,coberturaArrivata:(brandStats.find(b=>b.marca==='ARRIVATA')?.pct||0)+'%',comparacionMarcas:brandStats,arrivataPerZona:zonaStats};
+  return `Sos analista comercial de ARRIVATA, marca de lácteos gourmet (burrata, bocconcinos, ricotta, etc.) en supermercados argentinos.\n\nGenerá un reporte ${type} en español basado en:\n\n${JSON.stringify(stats,null,2)}\n\nMarcas competidoras: FESTA, WAPI, CUISINE, CARREFOUR.\n\n## Resumen Ejecutivo\n## Métricas de Presencia\n## Oportunidades y Alertas\n## Acciones Recomendadas (3-5 acciones concretas)\n\nFormato Markdown, tono profesional, usá los números reales.`;
+}
+
+function copyReport(){
+  navigator.clipboard.writeText(app.reportText).then(()=>{ const btn=document.getElementById('btn-copy'); btn.textContent='✓ Copiado'; setTimeout(()=>{btn.innerHTML='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copiar';},2000); });
+}
+
+// ── Últimas N visitas ─────────────────────────────────────────
+function applyDetailCount(){
+  const n=parseInt(document.getElementById('det-count-input').value);
+  if(!n||n<1) return;
+
+  app.detFilterMode='count';
+
+  // Deactivate period buttons, activate count button
+  document.querySelectorAll('.det-period-btn').forEach(b=>{ b.classList.remove('active-period'); b.classList.add('btn-ghost'); });
+  const btnCount=document.getElementById('btn-det-count');
+  btnCount.classList.remove('btn-ghost'); btnCount.classList.add('btn-blue');
+
+  // Take last N from full history
+  const visits=app._detAllVisits.slice(-n);
+
+  // Period label
+  if(visits.length){
+    const dates=visits.map(v=>parseDate(v['FECHA'])).filter(Boolean);
+    const mn=new Date(Math.min(...dates)), mx=new Date(Math.max(...dates));
+    document.getElementById('det-period-label').textContent=
+      `Últimas ${visits.length} visita${visits.length!==1?'s':''} (${fmtDate(mn)} – ${fmtDate(mx)})`;
+  } else {
+    document.getElementById('det-period-label').textContent='Sin visitas';
+  }
+
+  const arrCols=app.brandCols.ARRIVATA;
+  updateDetailStats(visits, arrCols);
+  const activeCols=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0));
+  const lastVisit=visits[visits.length-1]||{};
+  renderDetailLine(visits, activeCols);
+  renderDetailBar(lastVisit, activeCols, arrCols);
+  renderDetailTable(visits, arrCols);
+}
+
+function updateDetailStats(visits, arrCols){
+  if(visits.length>0){
+    const last=visits[visits.length-1], first=visits[0];
+    const lastPresent=arrCols.filter(c=>parseQty(last[c])>0);
+    const hasArr=lastPresent.length>0;
+    document.getElementById('det-n-visitas').textContent=visits.length;
+    document.getElementById('det-primera').textContent=first['FECHA']||'—';
+    document.getElementById('det-ultima').textContent=last['FECHA']||'—';
+    document.getElementById('det-prods-last').textContent=lastPresent.length+' / '+arrCols.length+' productos';
+    document.getElementById('det-status-badge').innerHTML=
+      `<span class="${hasArr?'badge-si':'badge-no'}" style="font-size:.88rem;padding:4px 14px">${hasArr?'✓ Arrivata presente':'✗ Sin Arrivata'}</span>`;
+    document.getElementById('det-ultima-lbl').textContent='Última en período: '+last['FECHA'];
+  } else {
+    ['det-n-visitas','det-primera','det-ultima'].forEach(id=>document.getElementById(id).textContent='—');
+    document.getElementById('det-prods-last').textContent='—';
+    document.getElementById('det-status-badge').innerHTML='';
+    document.getElementById('det-ultima-lbl').textContent='';
+  }
+}
+
+// ── Página Locales ────────────────────────────────────────────
+function calcLocalScore(localName){
+  const cutoff=new Date(Date.now()-30*864e5);
+  const visits=app.raw.filter(r=>r['Local']===localName&&parseDate(r['FECHA'])>=cutoff);
+  if(!visits.length) return null;
+
+  const arrCols=app.brandCols.ARRIVATA;
+  const totalProds=arrCols.length;
+  const withArr=visits.filter(v=>arrCols.some(c=>parseQty(v[c])>0)).length;
+  const uniqueSeen=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0)).length;
+
+  const presencePct=Math.round(withArr/visits.length*100);
+  const varietyPct=totalProds>0?Math.round(uniqueSeen/totalProds*100):0;
+  const raw=(presencePct/100*0.5 + varietyPct/100*0.5)*10;
+  const score=Math.max(1,Math.min(10,Math.round(raw)));
+
+  return { score, presencePct, varietyPct, visits:visits.length, withArr, uniqueSeen, totalProds };
+}
+
+function scoreColor(s){ return s>=8?'#16a34a':s>=5?'#d97706':'#dc2626'; }
+function scoreBg(s){ return s>=8?'#f0fdf4':s>=5?'#fffbeb':'#fef2f2'; }
+function scoreLabel(s){ return s>=8?'Excelente':s>=5?'Regular':'Baja'; }
+
+function openLocales(){
+  // Populate zona filter
+  const zonas=[...new Set(app.raw.map(r=>r._zona).filter(z=>z&&z!=='—'))].sort();
+  const sel=document.getElementById('loc-zona');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Todas las zonas</option>'+zonas.map(z=>`<option value="${esc(z)}">${esc(z)}</option>`).join('');
+  sel.value=cur;
+
+  document.getElementById('main-view').style.display='none';
+  document.getElementById('locales-view').style.display='block';
+  window.scrollTo(0,0);
+  renderLocalesGrid();
+}
+
+function closeLocales(){
+  document.getElementById('locales-view').style.display='none';
+  document.getElementById('main-view').style.display='block';
+}
+
+function renderLocalesGrid(){
+  const srch=document.getElementById('loc-srch').value.toLowerCase();
+  const zona=document.getElementById('loc-zona').value;
+  const sort=document.getElementById('loc-sort').value;
+
+  // Build unique locals list
+  const localesMap={};
+  app.raw.forEach(r=>{
+    const name=r['Local'];
+    if(!name) return;
+    if(!localesMap[name]){
+      localesMap[name]={ name, zona:r._zona||'—', address:r['Ubicación']||r['Ubicacion']||'', totalVisits:0 };
+    }
+    localesMap[name].totalVisits++;
+  });
+
+  let locals=Object.values(localesMap);
+
+  // Apply filters
+  if(zona) locals=locals.filter(l=>l.zona===zona);
+  if(srch) locals=locals.filter(l=>(l.name+' '+l.zona+' '+l.address).toLowerCase().includes(srch));
+
+  // Compute scores
+  locals=locals.map(l=>({ ...l, scoreInfo:calcLocalScore(l.name) }));
+
+  // Sort
+  if(sort==='score-desc') locals.sort((a,b)=>(b.scoreInfo?.score||0)-(a.scoreInfo?.score||0));
+  else if(sort==='score-asc') locals.sort((a,b)=>(a.scoreInfo?.score||0)-(b.scoreInfo?.score||0));
+  else if(sort==='name-asc') locals.sort((a,b)=>a.name.localeCompare(b.name,'es'));
+  else if(sort==='visits-desc') locals.sort((a,b)=>(b.scoreInfo?.visits||0)-(a.scoreInfo?.visits||0));
+
+  document.getElementById('loc-count-lbl').textContent=locals.length+' locales';
+
+  const grid=document.getElementById('loc-grid');
+  if(!locals.length){
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:60px;color:#7B6A55">Sin locales para los filtros seleccionados</div>';
+    return;
+  }
+
+  grid.innerHTML=locals.map(l=>{
+    const si=l.scoreInfo;
+    const sc=si?.score||null;
+    const clr=sc?scoreColor(sc):'#C5B49A';
+    const bg=sc?scoreBg(sc):'#FAF6EE';
+
+    const statsHtml=si ? `
+      <div style="border-top:1px solid #E5D9C4;padding-top:12px;margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:.72rem;color:#7B6A55">Presencia (visitas con Arrivata)</span>
+          <span style="font-size:.72rem;font-weight:700;color:${clr}">${si.presencePct}%</span>
+        </div>
+        <div style="background:#E5D9C4;border-radius:999px;height:5px;overflow:hidden;margin-bottom:8px">
+          <div style="height:100%;background:${clr};width:${si.presencePct}%;border-radius:999px"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:.72rem;color:#7B6A55">Variedad de productos Arrivata</span>
+          <span style="font-size:.72rem;font-weight:700;color:#A07830">${si.uniqueSeen}/${si.totalProds}</span>
+        </div>
+        <div style="background:#E5D9C4;border-radius:999px;height:5px;overflow:hidden;margin-bottom:10px">
+          <div style="height:100%;background:#A07830;width:${si.varietyPct}%;border-radius:999px"></div>
+        </div>
+        <div style="font-size:.7rem;color:#7B6A55">${si.visits} visita${si.visits!==1?'s':''} en el último mes</div>
+      </div>` :
+      `<div style="border-top:1px solid #E5D9C4;padding-top:10px;margin-top:10px;font-size:.75rem;color:#7B6A55;text-align:center">Sin visitas en el último mes</div>`;
+
+    return `<div class="card local-card" data-local="${esc(l.name)}"
+      style="padding:18px;cursor:pointer;transition:transform .2s,box-shadow .2s"
+      onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 10px 25px -5px rgba(139,23,20,.12)'"
+      onmouseleave="this.style.transform='';this.style.boxShadow=''">
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:4px">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Playfair Display',serif;font-weight:700;color:#1C1208;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name)}</div>
+          <div style="font-size:.74rem;color:#7B6A55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.address||'—')}</div>
+          <span style="display:inline-block;margin-top:6px;background:#F9EDED;color:#8B1714;border-radius:999px;padding:1px 10px;font-size:.68rem;font-weight:700">${esc(l.zona)}</span>
+        </div>
+        <div style="text-align:center;background:${bg};border-radius:12px;padding:8px 14px;min-width:64px;flex-shrink:0">
+          <div style="font-size:1.7rem;font-weight:800;color:${clr};line-height:1">${sc||'—'}</div>
+          <div style="font-size:.62rem;color:${clr};font-weight:600">${sc?'/10 '+scoreLabel(sc):''}</div>
+        </div>
+      </div>
+      ${statsHtml}
+    </div>`;
+  }).join('');
+}
+
+// ── Utils ────────────────────────────────────────────────────
+function parseDate(str){ if(!str) return null; const p=String(str).split('/'); if(p.length===3) return new Date(+p[2],+p[1]-1,+p[0]); return null; }
+function fmtDate(d){ return d?d.toLocaleDateString('es-AR',{day:'numeric',month:'short'}):''; }
+function setLoading(on){ document.getElementById('lbar').style.display=on?'block':'none'; }
+function showError(msg){ document.getElementById('empty').style.display='block'; document.getElementById('dash').style.display='none'; document.getElementById('empty-error').style.display='block'; document.getElementById('empty-error-msg').textContent=msg; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
