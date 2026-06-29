@@ -313,15 +313,69 @@
     <!-- Charts -->
     <div class="charts-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px">
       <div class="card" style="padding:18px">
-        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Presencia por Marca</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:14px">% de visitas con presencia en góndola</div>
-        <div style="position:relative;height:220px"><canvas id="chart-marcas"></canvas></div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <div>
+            <div id="chart-0-title" style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Presencia por Marca</div>
+            <div id="chart-0-sub" style="font-size:.7rem;color:var(--muted);margin-top:2px">% de visitas con presencia en góndola</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0">
+            <select id="chart-0-datos" onchange="changeChart(0)" style="font-size:.68rem;border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:var(--text);background:#FFFDF8;cursor:pointer">
+              <option value="marca" selected>Por Marca</option>
+              <option value="zona">Por Zona</option>
+              <option value="producto">Producto Arrivata</option>
+              <option value="local">Local — Presencia</option>
+              <option value="local_variedad">Local — Variedad</option>
+              <option value="cadena">Por Cadena</option>
+              <option value="mes">Evolución Mensual</option>
+            </select>
+            <select id="chart-0-tipo" onchange="changeChart(0)" style="font-size:.68rem;border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:var(--text);background:#FFFDF8;cursor:pointer">
+              <option value="bar" selected>Barras</option>
+              <option value="column">Columnas</option>
+              <option value="donut">Donut</option>
+              <option value="line">Línea</option>
+            </select>
+          </div>
+        </div>
+        <div style="position:relative;height:220px"><canvas id="chart-0"></canvas></div>
       </div>
       <div class="card" style="padding:18px">
-        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Arrivata por Zona</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:14px">% de visitas con Arrivata presente</div>
-        <div style="position:relative;height:220px"><canvas id="chart-zonas"></canvas></div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <div>
+            <div id="chart-1-title" style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Arrivata por Zona</div>
+            <div id="chart-1-sub" style="font-size:.7rem;color:var(--muted);margin-top:2px">% de visitas con Arrivata presente</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0">
+            <select id="chart-1-datos" onchange="changeChart(1)" style="font-size:.68rem;border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:var(--text);background:#FFFDF8;cursor:pointer">
+              <option value="marca">Por Marca</option>
+              <option value="zona" selected>Por Zona</option>
+              <option value="producto">Producto Arrivata</option>
+              <option value="local">Local — Presencia</option>
+              <option value="local_variedad">Local — Variedad</option>
+              <option value="cadena">Por Cadena</option>
+              <option value="mes">Evolución Mensual</option>
+            </select>
+            <select id="chart-1-tipo" onchange="changeChart(1)" style="font-size:.68rem;border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:var(--text);background:#FFFDF8;cursor:pointer">
+              <option value="bar" selected>Barras</option>
+              <option value="column">Columnas</option>
+              <option value="donut">Donut</option>
+              <option value="line">Línea</option>
+            </select>
+          </div>
+        </div>
+        <div style="position:relative;height:220px"><canvas id="chart-1"></canvas></div>
       </div>
+    </div>
+
+    <!-- Panel de Faltantes por Producto -->
+    <div class="card" style="margin-bottom:22px;padding:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:6px">
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Faltantes por Producto</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Según la última visita registrada en cada local</div>
+        </div>
+        <span id="falt-resumen" style="font-size:.76rem;color:var(--muted);font-weight:700"></span>
+      </div>
+      <div id="faltantes-grid"></div>
     </div>
 
     <!-- Table -->
@@ -656,7 +710,8 @@ const app = {
   _detFrom: 'main',
   charts: {},
   detCharts: {},
-  uploadedFiles: []
+  uploadedFiles: [],
+  chartConfigs: [{datos:'marca',tipo:'bar'},{datos:'zona',tipo:'bar'}]
 };
 
 // ── Login ────────────────────────────────────────────────────
@@ -683,6 +738,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const saved = localStorage.getItem('arrivata_v2');
   if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
+  const savedCharts = localStorage.getItem('arrivata_charts');
+  if(savedCharts) try { app.chartConfigs=JSON.parse(savedCharts); } catch(e){}
+  // Sync selectors with saved config
+  app.chartConfigs.forEach((cc,i)=>{
+    const sd=document.getElementById(`chart-${i}-datos`);
+    const st=document.getElementById(`chart-${i}-tipo`);
+    if(sd) sd.value=cc.datos;
+    if(st) st.value=cc.tipo;
+  });
   document.getElementById('inp-url').value = app.cfg.url;
   document.getElementById('inp-key').value = app.cfg.key || '';
   // Default custom range: last 30 days → today
@@ -791,6 +855,7 @@ function setPeriod(days){
   updateStats(filtered);
   updateCharts(filtered);
   renderTable();
+  renderFaltantes();
 }
 
 // ── Stats ────────────────────────────────────────────────────
@@ -806,27 +871,118 @@ function updateStats(data){
 }
 
 // ── Charts (main) ────────────────────────────────────────────
-function updateCharts(data){
-  const brandData=Object.keys(app.brandCols).map(b=>({brand:b,pct:data.length?Math.round(data.filter(r=>hasPresence(r,b)).length/data.length*100):0})).sort((a,b)=>b.pct-a.pct);
-  buildMainChart('chart-marcas',brandData.map(d=>d.brand),brandData.map(d=>d.pct),brandData.map(d=>BRAND_COLORS[d.brand]||'#94a3b8'));
+// ── Chart config metadata ────────────────────────────────────
+const CHART_META = {
+  marca:          { title:'Presencia por Marca',        sub:'% de visitas con al menos un producto de cada marca' },
+  zona:           { title:'Presencia Arrivata por Zona',sub:'% de visitas con Arrivata presente' },
+  producto:       { title:'Presencia por Producto',     sub:'% de visitas donde el producto estaba en góndola' },
+  local:          { title:'Presencia por Local',        sub:'% de visitas con al menos un producto Arrivata (top 10)' },
+  local_variedad: { title:'Variedad por Local',         sub:'% del portafolio Arrivata presente en el período (top 10)' },
+  cadena:         { title:'Presencia por Cadena',       sub:'% de visitas con Arrivata por cadena' },
+  mes:            { title:'Evolución Mensual',          sub:'% de presencia Arrivata por mes' }
+};
 
-  const zones={};
-  data.forEach(r=>{ const z=r._zona||'—'; zones[z]=zones[z]||{t:0,on:0}; zones[z].t++; if(hasPresence(r,'ARRIVATA')) zones[z].on++; });
-  const zd=Object.entries(zones).map(([z,v])=>({zona:z,pct:v.t?Math.round(v.on/v.t*100):0,t:v.t})).filter(d=>d.zona!=='—'&&d.t>=2).sort((a,b)=>b.pct-a.pct).slice(0,12);
-  buildMainChart('chart-zonas',zd.map(d=>d.zona),zd.map(d=>d.pct),zd.map(d=>d.pct>=70?'#16a34a':d.pct>=40?'#f59e0b':'#ef4444'));
+function getChartData(datos, data){
+  switch(datos){
+    case 'marca': {
+      return Object.keys(app.brandCols).filter(b=>app.brandCols[b].length).map(b=>({
+        label:b.charAt(0)+b.slice(1).toLowerCase(), value:data.length?Math.round(data.filter(r=>hasPresence(r,b)).length/data.length*100):0, color:BRAND_COLORS[b]||'#94a3b8'
+      })).sort((a,b)=>b.value-a.value);
+    }
+    case 'zona': {
+      const zones={};
+      data.forEach(r=>{ const z=r._zona||'—'; zones[z]=zones[z]||{t:0,on:0}; zones[z].t++; if(hasPresence(r,'ARRIVATA')) zones[z].on++; });
+      return Object.entries(zones).map(([z,v])=>({label:z,value:v.t?Math.round(v.on/v.t*100):0,t:v.t}))
+        .filter(d=>d.label!=='—'&&d.t>=2).sort((a,b)=>b.value-a.value).slice(0,12)
+        .map(d=>({...d,color:d.value>=70?'#16a34a':d.value>=40?'#f59e0b':'#ef4444'}));
+    }
+    case 'producto': {
+      const arrCols=app.brandCols.ARRIVATA||[];
+      return arrCols.map(col=>({
+        label:colLabel(col), value:data.length?Math.round(data.filter(r=>colPresent(r,col)).length/data.length*100):0
+      })).filter(d=>d.value>0).sort((a,b)=>b.value-a.value)
+        .map((d,i)=>({...d, color:PROD_COLORS[i%PROD_COLORS.length]}));
+    }
+    case 'local': {
+      const lm={};
+      data.forEach(r=>{ const n=r['Local']; if(!n) return; lm[n]=lm[n]||{t:0,on:0}; lm[n].t++; if(hasPresence(r,'ARRIVATA')) lm[n].on++; });
+      return Object.entries(lm).map(([n,v])=>({
+        label:n.length>24?n.slice(0,24)+'…':n, value:v.t?Math.round(v.on/v.t*100):0
+      })).sort((a,b)=>b.value-a.value).slice(0,10)
+        .map((d,i)=>({...d, color:PROD_COLORS[i%PROD_COLORS.length]}));
+    }
+    case 'local_variedad': {
+      const arrCols=app.brandCols.ARRIVATA||[];
+      const lm={};
+      data.forEach(r=>{ const n=r['Local']; if(!n) return; lm[n]=lm[n]||new Set(); arrCols.forEach(c=>{ if(colPresent(r,c)) lm[n].add(c); }); });
+      return Object.entries(lm).map(([n,seen])=>({
+        label:n.length>24?n.slice(0,24)+'…':n, value:arrCols.length?Math.round(seen.size/arrCols.length*100):0
+      })).sort((a,b)=>b.value-a.value).slice(0,10)
+        .map((d,i)=>({...d, color:PROD_COLORS[i%PROD_COLORS.length]}));
+    }
+    case 'cadena': {
+      const cm={}; const chainColors=['#8B1714','#A07830','#16a34a','#0d9488','#d97706'];
+      data.forEach(r=>{ const ch=chainOf(r['Local'])||'Otros'; cm[ch]=cm[ch]||{t:0,on:0}; cm[ch].t++; if(hasPresence(r,'ARRIVATA')) cm[ch].on++; });
+      return Object.entries(cm).map(([ch,v],i)=>({
+        label:ch, value:v.t?Math.round(v.on/v.t*100):0, color:chainColors[i%chainColors.length]
+      })).sort((a,b)=>b.value-a.value);
+    }
+    case 'mes': {
+      const bm={};
+      data.forEach(r=>{ const d=parseDate(r['FECHA']); if(!d) return; const k=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0'); bm[k]=bm[k]||{t:0,on:0}; bm[k].t++; if(hasPresence(r,'ARRIVATA')) bm[k].on++; });
+      return Object.keys(bm).sort().map(m=>({
+        label:new Date(m+'-15').toLocaleDateString('es-AR',{month:'short',year:'numeric'}),
+        value:bm[m].t?Math.round(bm[m].on/bm[m].t*100):0, color:BRAND_COLORS.ARRIVATA
+      }));
+    }
+    default: return [];
+  }
 }
 
-function buildMainChart(id,labels,values,colors){
-  if(app.charts[id]) app.charts[id].destroy();
-  app.charts[id]=new Chart(document.getElementById(id),{
-    type:'bar',
-    data:{labels,datasets:[{data:values,backgroundColor:colors,borderRadius:5,borderSkipped:false}]},
-    options:{
-      indexAxis:'y',responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw}%`}}},
-      scales:{x:{max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}},y:{ticks:{font:{size:10},color:'#7B6A55'},grid:{display:false}}}
-    }
-  });
+function buildCustomChart(slot, data){
+  const cfg=app.chartConfigs[slot];
+  const id=`chart-${slot}`;
+  const meta=CHART_META[cfg.datos]||CHART_META.marca;
+  const te=document.getElementById(`${id}-title`); if(te) te.textContent=meta.title;
+  const se=document.getElementById(`${id}-sub`); if(se) se.textContent=meta.sub;
+
+  const items=getChartData(cfg.datos, data);
+  if(app.charts[id]){ app.charts[id].destroy(); delete app.charts[id]; }
+  const ctx=document.getElementById(id); if(!ctx||!items.length) return;
+
+  const labels=items.map(d=>d.label), values=items.map(d=>d.value), colors=items.map(d=>d.color);
+  const pctFmt=c=>` ${c.raw}%`;
+
+  if(cfg.tipo==='donut'){
+    app.charts[id]=new Chart(ctx,{ type:'doughnut', data:{labels,datasets:[{data:values,backgroundColor:colors,borderWidth:2,borderColor:'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+        plugins:{legend:{display:true,position:'right',labels:{font:{size:10},color:'#7B6A55',boxWidth:12}},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw}%`}}}} });
+  } else if(cfg.tipo==='line'){
+    app.charts[id]=new Chart(ctx,{ type:'line', data:{labels,datasets:[{data:values,borderColor:BRAND_COLORS.ARRIVATA,backgroundColor:BRAND_COLORS.ARRIVATA+'25',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:BRAND_COLORS.ARRIVATA}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:pctFmt}}},
+        scales:{x:{ticks:{font:{size:9},color:'#7B6A55'},grid:{display:false}},y:{max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}}}} });
+  } else if(cfg.tipo==='column'){
+    app.charts[id]=new Chart(ctx,{ type:'bar', data:{labels,datasets:[{data:values,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:pctFmt}}},
+        scales:{x:{ticks:{font:{size:9},color:'#7B6A55'},grid:{display:false}},y:{max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}}}} });
+  } else {
+    app.charts[id]=new Chart(ctx,{ type:'bar', data:{labels,datasets:[{data:values,backgroundColor:colors,borderRadius:5,borderSkipped:false}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:pctFmt}}},
+        scales:{x:{max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}},y:{ticks:{font:{size:10},color:'#7B6A55'},grid:{display:false}}}} });
+  }
+}
+
+function updateCharts(data){
+  app.chartConfigs.forEach((_,i)=>buildCustomChart(i,data));
+}
+
+function changeChart(slot){
+  app.chartConfigs[slot]={
+    datos:document.getElementById(`chart-${slot}-datos`).value,
+    tipo:document.getElementById(`chart-${slot}-tipo`).value
+  };
+  localStorage.setItem('arrivata_charts',JSON.stringify(app.chartConfigs));
+  buildCustomChart(slot, app._periodData||app.raw);
 }
 
 // ── Table (main) ─────────────────────────────────────────────
@@ -896,6 +1052,64 @@ function renderTable(){
 function prevPage(){ if(app.page>1){ app.page--; renderTable(); } }
 function nextPage(){ const max=Math.ceil(getFiltered().length/app.pageSize); if(app.page<max){ app.page++; renderTable(); } }
 function clearFilters(){ document.getElementById('srch').value=''; document.getElementById('f-zona').value=''; document.getElementById('f-arrivata').value=''; app.page=1; renderTable(); }
+
+// ── Faltantes por producto (última visita de cada local) ───────
+function getLastVisitByLocal(){
+  const last={};
+  app.raw.forEach(r=>{
+    const name=r['Local'];
+    if(!name) return;
+    const d=parseDate(r['FECHA']);
+    if(!d) return;
+    if(!last[name] || d>last[name]._d) last[name]={ row:r, _d:d };
+  });
+  return Object.fromEntries(Object.entries(last).map(([k,v])=>[k,v.row]));
+}
+
+function calcFaltantesPorProducto(){
+  const arrCols=app.brandCols.ARRIVATA;
+  if(!arrCols||!arrCols.length) return [];
+  const lastVisits=Object.values(getLastVisitByLocal());
+  const totalLocales=lastVisits.length;
+  if(!totalLocales) return [];
+
+  return arrCols.map(col=>{
+    const presentes=lastVisits.filter(r=>colPresent(r,col));
+    const faltantes=lastVisits.filter(r=>!colPresent(r,col)).map(r=>r['Local']);
+    const cobertura=Math.round(presentes.length/totalLocales*100);
+    return { producto:colLabel(col), cobertura, presentes:presentes.length, faltantes, totalLocales };
+  }).sort((a,b)=>a.cobertura-b.cobertura);
+}
+
+function renderFaltantes(){
+  const grid=document.getElementById('faltantes-grid');
+  const resumen=document.getElementById('falt-resumen');
+  if(!grid) return;
+  const data=calcFaltantesPorProducto();
+  if(!data.length){ grid.innerHTML='<div style="font-size:.8rem;color:var(--muted)">Sin datos suficientes.</div>'; resumen.textContent=''; return; }
+
+  const peor=data.filter(d=>d.cobertura<50).length;
+  resumen.textContent=peor? `${peor} producto${peor!==1?'s':''} en alerta (<50% de locales)` : 'Cobertura saludable en todos los productos';
+
+  grid.innerHTML=data.map(d=>{
+    const clr=d.cobertura>=80?'#16a34a':d.cobertura>=50?'#d97706':'#dc2626';
+    const bg=d.cobertura>=80?'#f0fdf4':d.cobertura>=50?'#fffbeb':'#fef2f2';
+    const faltantesList=d.faltantes.length
+      ? esc(d.faltantes.slice(0,8).join(', ')) + (d.faltantes.length>8?` y ${d.faltantes.length-8} más`:'')
+      : 'Presente en todos los locales';
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px">
+          <span style="font-weight:700;color:var(--text);font-size:.85rem">${esc(d.producto)}</span>
+          <span style="font-size:.75rem;font-weight:700;color:${clr};background:${bg};padding:2px 9px;border-radius:20px">${d.cobertura}% (${d.presentes}/${d.totalLocales})</span>
+        </div>
+        <div style="height:6px;background:#EFE6D4;border-radius:4px;overflow:hidden;margin-bottom:6px">
+          <div style="height:100%;width:${d.cobertura}%;background:${clr}"></div>
+        </div>
+        <div style="font-size:.72rem;color:var(--muted)">Falta en: ${faltantesList}</div>
+      </div>`;
+  }).join('');
+}
 
 // ══════════════════════════════════════════════════════════════
 // ── DETALLE DE LOCAL ─────────────────────────────────────────
@@ -1852,6 +2066,28 @@ function scoreColor(s){ return s>=8?'#16a34a':s>=5?'#d97706':'#dc2626'; }
 function scoreBg(s){ return s>=8?'#f0fdf4':s>=5?'#fffbeb':'#fef2f2'; }
 function scoreLabel(s){ return s>=8?'Excelente':s>=5?'Regular':'Baja'; }
 
+// Semáforo de portafolio: estado del local según su última visita (no ventana de 30 días)
+function getLastVisitForLocal(localName){
+  const visits=app.raw.filter(r=>r['Local']===localName).map(r=>({row:r,d:parseDate(r['FECHA'])})).filter(v=>v.d);
+  if(!visits.length) return null;
+  visits.sort((a,b)=>a.d-b.d);
+  return visits[visits.length-1];
+}
+
+function getPortfolioStatus(localName){
+  const last=getLastVisitForLocal(localName);
+  if(!last) return null;
+  const arrCols=app.brandCols.ARRIVATA;
+  const missing=arrCols.filter(c=>!colPresent(last.row,c)).map(c=>colLabel(c));
+  const total=arrCols.length;
+  const present=total-missing.length;
+  let status,color,bg;
+  if(missing.length===0){ status='Completo'; color='#16a34a'; bg='#f0fdf4'; }
+  else if(present===0){ status='Quebrado'; color='#dc2626'; bg='#fef2f2'; }
+  else { status='Parcial'; color='#d97706'; bg='#fffbeb'; }
+  return { missing, present, total, status, color, bg, fecha:last.d };
+}
+
 function openLocales(){
   // Populate zona filter
   const zonas=[...new Set(app.raw.map(r=>r._zona).filter(z=>z&&z!=='—'))].sort();
@@ -1915,6 +2151,15 @@ function renderLocalesGrid(){
     const sc=si?.score||null;
     const clr=sc?scoreColor(sc):'#C5B49A';
     const bg=sc?scoreBg(sc):'#FAF6EE';
+    const pf=getPortfolioStatus(l.name);
+
+    const semaforoHtml=pf ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 10px;background:${pf.bg};border-radius:8px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${pf.color};flex-shrink:0"></span>
+        <span style="font-size:.74rem;font-weight:700;color:${pf.color}">${pf.status} (${pf.present}/${pf.total})</span>
+        <span style="font-size:.68rem;color:#7B6A55;margin-left:auto">última visita ${fmtDate(pf.fecha)}</span>
+      </div>
+      ${pf.missing.length?`<div style="font-size:.7rem;color:#7B6A55;margin-top:6px"><strong style="color:#8B1714">Falta:</strong> ${esc(pf.missing.join(', '))}</div>`:''}` : '';
 
     const statsHtml=si ? `
       <div style="border-top:1px solid #E5D9C4;padding-top:12px;margin-top:12px">
@@ -1951,6 +2196,7 @@ function renderLocalesGrid(){
           <div style="font-size:.62rem;color:${clr};font-weight:600">${sc?'/10 '+scoreLabel(sc):''}</div>
         </div>
       </div>
+      ${semaforoHtml}
       ${statsHtml}
     </div>`;
   }).join('');
