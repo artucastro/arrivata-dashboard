@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lato:wght@300;400;700&display=swap');
 
@@ -34,7 +35,19 @@
   .btn-blue   { background:var(--red);color:#fff; } .btn-blue:hover   { background:var(--red-dark); }
   .btn-purple { background:var(--gold);color:#fff; } .btn-purple:hover { background:var(--gold-dark); }
   .btn-ghost  { background:transparent;color:var(--muted);border:1px solid var(--border); } .btn-ghost:hover { background:var(--cream-2);color:var(--text); }
+  .btn-teal   { background:#0d9488;color:#fff; } .btn-teal:hover   { background:#0f766e; }
   .btn:disabled { opacity:.5;cursor:not-allowed; }
+
+  .file-drop{border:2px dashed var(--border);border-radius:8px;padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;user-select:none;background:#fff}
+  .file-drop:hover,.file-drop.drag-over{border-color:#0d9488;background:rgba(13,148,136,.05)}
+  .file-chip{display:inline-flex;align-items:center;gap:5px;background:var(--cream);border:1px solid var(--border);border-radius:999px;padding:3px 8px 3px 10px;font-size:.75rem;color:var(--text);max-width:220px}
+  .file-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .file-chip-rm{background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;padding:0;flex-shrink:0}
+  .file-chip-rm:hover{color:var(--red)}
+  .rtype-btn { padding:6px 16px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;border-right:1px solid var(--border);background:#fff;color:var(--muted);transition:all .15s; }
+  .rtype-btn:last-child { border-right:none; }
+  .rtype-btn:hover:not(.active-rtype) { background:var(--cream-2);color:var(--text); }
+  .rtype-btn.active-rtype { background:#0d9488;color:#fff; }
 
   .badge-si  { display:inline-block;background:#dcfce7;color:#16a34a;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:700; }
   .badge-no  { display:inline-block;background:#fee2e2;color:#dc2626;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:700; }
@@ -119,6 +132,12 @@
     /* Reports */
     .report-btns { flex-direction:column !important; }
     .report-btns .btn { width:100%;justify-content:center; }
+    .custom-range-row .dates-row { flex-direction:column !important; }
+    .custom-range-row .dates-row input[type="date"] { width:100% !important; min-width:0 !important; }
+    .custom-range-row .bottom-row { flex-direction:column !important; align-items:flex-start !important; }
+    .custom-range-row .bottom-row .btn { width:100% !important; justify-content:center; }
+    .rtype-group { width:100% !important; }
+    .rtype-btn { flex:1; }
 
     /* Detail view */
     .det-topbar  { flex-direction:column !important; align-items:flex-start !important; gap:8px !important; }
@@ -374,22 +393,69 @@
           </button>
         </div>
       </div>
+      <!-- Custom date range -->
+      <div class="custom-range-row" style="display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:12px 14px;background:var(--cream-2);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text)">Período personalizado</div>
+        <div class="dates-row" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+          <label style="font-size:.78rem;color:var(--muted);white-space:nowrap">Desde</label>
+          <input type="date" id="inp-desde" style="width:auto;min-width:140px;padding:6px 10px;font-size:.8rem">
+          <label style="font-size:.78rem;color:var(--muted);white-space:nowrap">Hasta</label>
+          <input type="date" id="inp-hasta" style="width:auto;min-width:140px;padding:6px 10px;font-size:.8rem">
+        </div>
+        <div class="bottom-row" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+          <span style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap">Tipo de informe</span>
+          <div class="rtype-group" style="display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:#fff">
+            <button class="rtype-btn active-rtype" data-v="simple" onclick="setRtype(this)">Simple</button>
+            <button class="rtype-btn" data-v="complejo" onclick="setRtype(this)">Complejo</button>
+            <button class="rtype-btn" data-v="profesional" onclick="setRtype(this)">Profesional</button>
+            <button class="rtype-btn" data-v="cadenas" onclick="setRtype(this)" style="border-right:none">Por Cadena</button>
+          </div>
+          <button id="btn-custom" class="btn btn-teal" onclick="generateReport('personalizado')" style="font-size:.82rem;white-space:nowrap;margin-left:auto">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+            Generar Reporte
+          </button>
+        </div>
+        <!-- Instrucciones + archivos -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label style="font-size:.78rem;font-weight:700;color:var(--muted)">Instrucciones para el reporte <span style="font-weight:400">(opcional)</span></label>
+            <textarea id="inp-instrucciones" rows="4" placeholder="Indicá qué incluir, qué omitir, el tono, el formato, puntos específicos a destacar, etc.&#10;&#10;Ej: Enfocate en la zona Norte. Omitir análisis de WAPI. Formato narrativo sin tablas. Mencioná el lanzamiento de Ricotta. Comparar con el trimestre anterior." style="width:100%;padding:8px 10px;font-size:.8rem;border:1px solid var(--border);border-radius:7px;resize:vertical;font-family:inherit;line-height:1.5;color:var(--text);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s;flex:1" onfocus="this.style.borderColor='var(--red)';this.style.boxShadow='0 0 0 3px rgba(139,23,20,.12)'" onblur="this.style.borderColor='';this.style.boxShadow=''"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label style="font-size:.78rem;font-weight:700;color:var(--muted)">Archivos de referencia <span style="font-weight:400">(opcional)</span></label>
+            <div id="file-drop-zone" class="file-drop" onclick="document.getElementById('file-input').click()" ondragover="fileDragOver(event)" ondragleave="fileDragLeave(event)" ondrop="fileDrop(event)" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:80px">
+              <input type="file" id="file-input" multiple accept="image/*,.pdf,.csv,.txt,.md,.xlsx,.xls" style="display:none" onchange="handleFileSelect(this.files)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <div style="font-size:.78rem;font-weight:700;color:var(--muted)">Arrastrá o hacé clic</div>
+              <div style="font-size:.7rem;color:var(--muted)">Imágenes · PDF · Excel · CSV · TXT · máx 10 MB</div>
+            </div>
+            <div id="file-list" style="display:flex;flex-wrap:wrap;gap:5px;min-height:0"></div>
+          </div>
+        </div>
+      </div>
       <div id="no-key-warn" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.82rem;color:#991b1b;margin-bottom:10px">
         🔑 No hay API key configurada. Hacé clic en <strong>Configurar</strong> (engranaje arriba) e ingresá tu key de Anthropic para poder generar reportes.
       </div>
       <div id="cors-warn" style="display:none;padding:10px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:.82rem;color:#92400e;margin-bottom:10px">
-        ⚠️ Para reportes ejecutá <code style="background:#fef3c7;padding:1px 5px;border-radius:4px;font-family:monospace;font-size:.8rem">python server.py</code> y abrí <code style="background:#fef3c7;padding:1px 5px;border-radius:4px;font-family:monospace;font-size:.8rem">http://localhost:8080</code>
+        ⚠️ Error de red al conectar con Anthropic. Verificá tu conexión a internet y que la API key sea correcta.
       </div>
       <div id="api-err-warn" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.82rem;color:#991b1b;margin-bottom:10px"></div>
       <div id="report-wrap" style="display:none;border-top:1px solid #f1f5f9;padding-top:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
           <span id="report-title" style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);font-size:.88rem"></span>
-          <button class="btn btn-ghost" id="btn-copy" onclick="copyReport()" style="padding:4px 10px;font-size:.75rem">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            Copiar
-          </button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" id="btn-copy" onclick="copyReport()" style="padding:4px 10px;font-size:.75rem">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copiar
+            </button>
+            <button class="btn btn-ghost" id="btn-word" onclick="downloadAsWord()" style="padding:4px 10px;font-size:.75rem">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Descargar Word
+            </button>
+          </div>
         </div>
-        <div id="report-output" style="background:var(--cream);border-radius:8px;padding:16px;max-height:440px;overflow-y:auto;font-size:.855rem;color:var(--text);line-height:1.65"></div>
+        <div id="report-charts" style="display:none;margin-bottom:16px"></div>
+        <div id="report-output" style="background:var(--cream);border-radius:8px;padding:16px;max-height:560px;overflow-y:auto;font-size:.855rem;color:var(--text);line-height:1.65"></div>
       </div>
     </div>
 
@@ -589,7 +655,8 @@ const app = {
   _detAllVisits: [],
   _detFrom: 'main',
   charts: {},
-  detCharts: {}
+  detCharts: {},
+  uploadedFiles: []
 };
 
 // ── Login ────────────────────────────────────────────────────
@@ -618,6 +685,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
   document.getElementById('inp-url').value = app.cfg.url;
   document.getElementById('inp-key').value = app.cfg.key || '';
+  // Default custom range: last 30 days → today
+  const toISO=d=>d.toISOString().slice(0,10);
+  const _today=new Date();
+  document.getElementById('inp-hasta').value=toISO(_today);
+  document.getElementById('inp-desde').value=toISO(new Date(_today.getFullYear(),_today.getMonth(),_today.getDate()-30));
   loadData();
 
   // Delegate click for local-link buttons inside main table
@@ -646,41 +718,46 @@ function saveAndLoad(){
 }
 
 // ── Load Data ────────────────────────────────────────────────
+function processCSV(csv){
+  const res = Papa.parse(csv, { header:false });
+  const rows = res.data;
+  const hIdx = rows.findIndex(r => String(r[0]||'').trim().toUpperCase()==='FECHA');
+  if(hIdx===-1){ showError('No se encontró la fila de encabezados.\nVerificá que la primera columna de datos sea "FECHA".'); setLoading(false); return; }
+
+  const headers = rows[hIdx].map(h=>String(h||'').trim());
+  app.brandCols = detectBrands(headers);
+
+  app.raw = rows.slice(hIdx+1)
+    .filter(r => String(r[0]||'').trim().length>0)
+    .map(r => {
+      const obj={};
+      headers.forEach((h,i)=>{ obj[h]=String(r[i]||'').trim(); });
+      obj._zona = extractZona(obj['Ubicación']||obj['Ubicacion']||'');
+      return obj;
+    });
+
+  populateZonaFilter();
+  setPeriod(app.periodDays, false);
+  document.getElementById('empty').style.display='none';
+  document.getElementById('dash').style.display='block';
+  document.getElementById('sync-label').textContent =
+    'Actualizado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  setLoading(false);
+}
+
 function loadData(){
   setLoading(true);
   document.getElementById('empty-error').style.display='none';
-  Papa.parse(app.cfg.url, {
-    download:true, header:false,
-    complete(res){
-      const rows = res.data;
-      const hIdx = rows.findIndex(r => String(r[0]||'').trim().toUpperCase()==='FECHA');
-      if(hIdx===-1){ showError('No se encontró la fila de encabezados.\nVerificá que la primera columna de datos sea "FECHA".'); setLoading(false); return; }
-
-      const headers = rows[hIdx].map(h=>String(h||'').trim());
-      app.brandCols = detectBrands(headers);
-
-      app.raw = rows.slice(hIdx+1)
-        .filter(r => String(r[0]||'').trim().length>0)
-        .map(r => {
-          const obj={};
-          headers.forEach((h,i)=>{ obj[h]=String(r[i]||'').trim(); });
-          obj._zona = extractZona(obj['Ubicación']||obj['Ubicacion']||'');
-          return obj;
-        });
-
-      populateZonaFilter();
-      setPeriod(app.periodDays, false);
-      document.getElementById('empty').style.display='none';
-      document.getElementById('dash').style.display='block';
-      document.getElementById('sync-label').textContent =
-        'Actualizado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  fetch(app.cfg.url, { mode:'cors', credentials:'omit' })
+    .then(r => {
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    })
+    .then(csv => processCSV(csv))
+    .catch(err => {
+      showError('No se pudo cargar el Google Sheet.\n\nVerificá que la URL esté publicada como CSV y tenés conexión a internet.\n\n(' + (err.message||'error de red') + ')');
       setLoading(false);
-    },
-    error(e){
-      showError('No se pudo cargar el Google Sheet.\n\nVerificá que la URL esté publicada como CSV y tenés conexión a internet.\n\n('+( e.message||e.type||'error de red')+')');
-      setLoading(false);
-    }
-  });
+    });
 }
 
 function detectBrands(headers){
@@ -825,7 +902,9 @@ function clearFilters(){ document.getElementById('srch').value=''; document.getE
 // ══════════════════════════════════════════════════════════════
 
 function parseQty(v){ if(!v||String(v).trim()==='') return 0; const n=parseInt(String(v).replace(/[^0-9]/g,'')); return isNaN(n)?0:n; }
-function colLabel(col){ return col.replace(/\s*AR$/i,'').trim(); }
+function colLabel(col){ return col.replace(/\s*(AR|FES|WA|CUI|CARRE)$/i,'').trim(); }
+// Misma lógica que hasPresence pero para una columna concreta — garantiza coherencia entre stats
+function colPresent(row, col){ const v=String(row[col]||'').trim(); return v!==''&&v!=='0'; }
 
 function openDetail(localName, from='main'){
   if(!localName) return;
@@ -1047,35 +1126,107 @@ async function generateReport(type){
   const apiErrEl=document.getElementById('api-err-warn');
   noKeyEl.style.display='none'; corsEl.style.display='none'; apiErrEl.style.display='none';
   if(!app.cfg.key){ noKeyEl.style.display='block'; return; }
-  const btnId=type==='semanal'?'btn-sem':'btn-men';
+
+  let fromDate=null, toDate=null;
+  const rtype = type==='personalizado' ? getRtype() : 'simple';
+  if(type==='personalizado'){
+    const desdeVal=document.getElementById('inp-desde').value;
+    const hastaVal=document.getElementById('inp-hasta').value;
+    if(!desdeVal||!hastaVal){
+      apiErrEl.textContent='Seleccioná una fecha de inicio y una de fin para el reporte personalizado.';
+      apiErrEl.style.display='block'; return;
+    }
+    fromDate=new Date(desdeVal+'T00:00:00');
+    toDate=new Date(hastaVal+'T23:59:59');
+    if(fromDate>toDate){
+      apiErrEl.textContent='La fecha de inicio debe ser anterior o igual a la fecha de fin.';
+      apiErrEl.style.display='block'; return;
+    }
+  }
+
+  const btnId=type==='semanal'?'btn-sem':type==='mensual'?'btn-men':'btn-custom';
   const btn=document.getElementById(btnId);
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Generando...';
-  document.getElementById('report-wrap').style.display='none';
+  const chartsEl=document.getElementById('report-charts');
+  chartsEl.style.display='none'; chartsEl.innerHTML='';
+
+  // Mostrar placeholder de carga — el informe aparecerá completo al terminar
+  const loadingLabel=rtype==='profesional'?'profesional':rtype==='complejo'?'complejo':rtype==='cadenas'?'por cadena':'';
+  const dosDos=rtype==='profesional'||rtype==='cadenas';
+  document.getElementById('report-title').textContent='Generando informe'+(loadingLabel?' '+loadingLabel:'')+'...';
+  document.getElementById('report-output').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding:48px 24px;gap:14px;color:var(--muted)"><div style="width:30px;height:30px;border:3px solid rgba(139,23,20,.15);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0"></div><div id="rpt-status" style="font-weight:700;color:var(--text);font-size:.9rem">Claude está analizando los datos...</div><div style="font-size:.78rem;text-align:center;line-height:1.6">El informe aparecerá completo cuando termine.<br>${dosDos?'Se genera en dos etapas para garantizar que salga completo.':'Esto tomará unos segundos.'}</div></div>`;
+  document.getElementById('report-wrap').style.display='block';
+
+  const instrucciones = (document.getElementById('inp-instrucciones')?.value||'').trim();
+  const fileBlocks = buildFileBlocks();
+  const maxTokens = rtype==='complejo' ? 4096 : 2048;
   try {
-    const payload={model:'claude-sonnet-4-6',max_tokens:2048,messages:[{role:'user',content:buildPrompt(type)}]};
-    const isLocal=['localhost','127.0.0.1'].includes(location.hostname);
-    let result;
-    if(isLocal){
-      const r=await fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:app.cfg.key,payload})});
-      if(!r.ok && r.status!==200){
-        let errBody; try{ errBody=await r.json(); }catch(ex){ errBody={error:{message:'HTTP '+r.status}}; }
-        throw new Error(errBody?.error?.message||'Error HTTP '+r.status);
+    // ── Validación de datos antes de llamar a la API ──────────
+    if(!app.raw||app.raw.length===0) throw new Error('No hay datos cargados. Actualizá el dashboard primero.');
+    if(app.brandCols.ARRIVATA.length===0) throw new Error('No se detectaron columnas de productos Arrivata. Verificá que las columnas del sheet tengan el sufijo " AR" (espacio + AR).');
+    if(type==='personalizado'&&fromDate&&toDate){
+      const rowsEnRango=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
+      if(rowsEnRango.length===0) throw new Error('No hay visitas registradas en el período seleccionado. Verificá las fechas.');
+      const conArrivata=rowsEnRango.filter(r=>hasPresence(r,'ARRIVATA')).length;
+      if(conArrivata===0){
+        const msg=`No se registró presencia de Arrivata en ninguna visita del período (${rowsEnRango.length} visitas totales). El informe no tendría datos reales para analizar.`;
+        if(!confirm(msg+'\n\n¿Generar el informe de todas formas?')) throw new Error('Generación cancelada.');
       }
-      result=await r.json();
-    } else {
-      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':app.cfg.key,'anthropic-version':'2023-06-01'},body:JSON.stringify(payload)});
-      result=await r.json();
     }
-    if(result?.content?.[0]?.text){
-      app.reportText=result.content[0].text;
-      document.getElementById('report-title').textContent=type==='semanal'?'Reporte Semanal — '+new Date().toLocaleDateString('es-AR'):'Reporte Mensual — '+new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});
-      document.getElementById('report-output').innerHTML=marked.parse(app.reportText);
-      document.getElementById('report-wrap').style.display='block';
-    } else if(result?.error){
-      throw new Error(result.error.message||'Error de API');
+    let reportText;
+
+    if(type==='personalizado' && rtype==='profesional'){
+      // ── Dos llamadas encadenadas para garantizar el informe completo ──
+      const stats = getProfStats(fromDate, toDate);
+
+      // Etapa 1: análisis de datos
+      const r1 = await callAnthropic(buildProfPart1(stats, instrucciones), 8192, fileBlocks);
+      if(!r1?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 1 del análisis');
+      const text1 = r1.content[0].text;
+
+      // Actualizar indicador
+      const statusEl=document.getElementById('rpt-status');
+      if(statusEl) statusEl.textContent='Generando estrategia y conclusión (2/2)...';
+
+      // Etapa 2: estrategia + conclusión final
+      const r2 = await callAnthropic(buildProfPart2(stats, instrucciones), 6000, fileBlocks);
+      if(!r2?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 2 del análisis');
+
+      reportText = text1 + '\n\n' + r2.content[0].text;
+    } else if(type==='personalizado' && rtype==='cadenas'){
+      const stats = getChainStats(fromDate, toDate);
+      // Etapa 1: resumen + análisis por cadena + comparación competitiva
+      const c1 = await callAnthropic(buildChainPart1(stats, instrucciones), 8192, fileBlocks);
+      if(!c1?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 1 del análisis de cadenas');
+      const chainText1 = c1.content[0].text;
+      const statusEl2=document.getElementById('rpt-status');
+      if(statusEl2) statusEl2.textContent='Generando rankings y plan de acción (2/2)...';
+      // Etapa 2: ranking de productos + plan de acción + conclusión
+      const c2 = await callAnthropic(buildChainPart2(stats, instrucciones), 6000, fileBlocks);
+      if(!c2?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 2 del análisis de cadenas');
+      reportText = chainText1 + '\n\n' + c2.content[0].text;
     } else {
-      throw new Error('Respuesta inesperada de la API: '+JSON.stringify(result).slice(0,120));
+      const r = await callAnthropic(buildPrompt(type,fromDate,toDate,rtype,instrucciones), maxTokens, fileBlocks);
+      if(!r?.content?.[0]?.text){
+        if(r?.error) throw new Error(r.error.message||'Error de API');
+        throw new Error('Respuesta inesperada: '+JSON.stringify(r).slice(0,120));
+      }
+      reportText = r.content[0].text;
     }
+
+    app.reportText = reportText;
+    let title;
+    if(type==='semanal') title='Reporte Semanal — '+new Date().toLocaleDateString('es-AR');
+    else if(type==='mensual') title='Reporte Mensual — '+new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+    else {
+      const rtypeLabel=rtype==='complejo'?'Complejo':rtype==='profesional'?'Profesional':rtype==='cadenas'?'Por Cadena':'Simple';
+      const fmtOpts={day:'numeric',month:'short',year:'numeric'};
+      title='Reporte '+rtypeLabel+' — '+fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
+    }
+    document.getElementById('report-title').textContent=title;
+    document.getElementById('report-output').innerHTML=marked.parse(app.reportText);
+    if(type==='personalizado'&&rtype==='profesional') renderReportCharts(fromDate,toDate);
+    document.getElementById('report-wrap').style.display='block';
   } catch(e){
     if(e instanceof TypeError){
       corsEl.style.display='block';
@@ -1084,23 +1235,540 @@ async function generateReport(type){
       apiErrEl.style.display='block';
     }
   } finally {
-    btn.disabled=false;
     const ic='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+    const icCustom='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>';
+    document.getElementById('btn-sem').disabled=false;
     document.getElementById('btn-sem').innerHTML=ic+' Reporte Semanal';
+    document.getElementById('btn-men').disabled=false;
     document.getElementById('btn-men').innerHTML=ic+' Reporte Mensual';
+    document.getElementById('btn-custom').disabled=false;
+    document.getElementById('btn-custom').innerHTML=icCustom+' Generar Reporte';
   }
 }
 
-function buildPrompt(type){
-  const days=type==='semanal'?7:30;
-  const data=days===0?app.raw:app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=new Date(Date.now()-days*864e5);});
+// ── Anthropic API helper ──────────────────────────────────────
+async function callAnthropic(prompt, maxTok, fileBlocks=[]){
+  const content=[...fileBlocks,{type:'text',text:prompt}];
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':app.cfg.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:maxTok,messages:[{role:'user',content}]})
+  });
+  if(!r.ok){
+    let e; try{e=await r.json();}catch(ex){e={error:{message:'HTTP '+r.status}};}
+    throw new Error(e?.error?.message||'Error HTTP '+r.status);
+  }
+  return r.json();
+}
+
+// ── Professional report helpers ───────────────────────────────
+function getProfStats(fromDate, toDate){
+  const data=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
   const n=data.length;
-  const brandStats=Object.keys(app.brandCols).map(b=>{const on=data.filter(r=>hasPresence(r,b)).length;return{marca:b,con:on,pct:n?Math.round(on/n*100):0};}).sort((a,b)=>b.pct-a.pct);
+  const fmtOpts={day:'numeric',month:'long',year:'numeric'};
+  const periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
+
+  // Marcas — cantidad absoluta y % sobre total visitas
+  const brandStats=Object.keys(app.brandCols).map(b=>{
+    const on=data.filter(r=>hasPresence(r,b)).length;
+    return {marca:b,visitasConPresencia:on,totalVisitas:n,pct:n?Math.round(on/n*100):0};
+  }).sort((a,b)=>b.pct-a.pct);
+
+  // Zonas
+  const zones={};
+  data.forEach(r=>{const z=r._zona||'—';if(z==='—')return;zones[z]=zones[z]||{t:0,on:0};zones[z].t++;if(hasPresence(r,'ARRIVATA'))zones[z].on++;});
+  const zonaStats=Object.entries(zones).map(([z,v])=>({zona:z,totalVisitas:v.t,visitasConArrivata:v.on,cobertura:v.t?Math.round(v.on/v.t*100)+'%':'0%'})).sort((a,b)=>parseInt(b.cobertura)-parseInt(a.cobertura)).slice(0,10);
+
+  // Locales únicos
+  const locales=[...new Set(data.map(r=>r['Local']).filter(Boolean))].sort();
+  const localesConArrivata=[...new Set(data.filter(r=>hasPresence(r,'ARRIVATA')).map(r=>r['Local']).filter(Boolean))].sort();
+
+  // Por mes
+  const monthGroups=groupByMonth(data);
+  const byMonth=monthGroups.map(([key,rows])=>{
+    const ms=monthStats(rows);
+    return {
+      mes:buildMonthLabel(key),
+      totalVisitas:ms.totalVisitas,
+      visitasConArrivata:rows.filter(r=>hasPresence(r,'ARRIVATA')).length,
+      coberturaArrivata:ms.coberturaArrivata,
+      marcas:ms.marcas,
+      productosArrivata:productStats(rows)  // lista completa por mes
+    };
+  });
+
+  // Productos globales
+  const rankingProductos=productStats(data);
+
+  return {
+    periodoLabel,
+    totalVisitas:n,
+    visitasConArrivata:data.filter(r=>hasPresence(r,'ARRIVATA')).length,
+    coberturaArrivata:(brandStats.find(b=>b.marca==='ARRIVATA')?.pct||0)+'%',
+    localesRelevados:locales.length,
+    localesConArrivata:localesConArrivata.length,
+    marcas:brandStats,
+    zonas:zonaStats,
+    byMonth,
+    rankingProductos,
+    // Campo de control: si está vacío hay un problema de datos
+    _debug:{arrivataColumns:app.brandCols.ARRIVATA,rowsEnRango:n}
+  };
+}
+
+const _profIntro=`Sos analista comercial senior de ARRIVATA, marca de lácteos gourmet (burrata, bocconcinos, ricotta, etc.) en supermercados argentinos. Marcas competidoras: FESTA, WAPI, CUISINE, CARREFOUR.
+
+REGLAS ABSOLUTAS — sin excepciones:
+• Solo usás los números y datos que están en el JSON de DATOS. Nunca inventás cifras, porcentajes ni productos.
+• Si un dato no está en los DATOS, no lo mencionás ni lo estimás.
+• Las coberturas (%) se calculan como: visitas con presencia ÷ total visitas × 100. No las redondeés distinto a como aparecen.
+• Si un campo está vacío o en 0, lo reportás como ausencia — no como "no hay datos suficientes" ni con evasivas.
+• Nunca mencionés productos que no aparezcan en rankingProductos o productosArrivata de los DATOS.
+
+`;
+
+function _instrBlock(instrucciones){
+  if(!instrucciones) return '';
+  return `════════════════════════════════════════════════════
+INSTRUCCIONES DEL USUARIO — LEER ANTES DE EMPEZAR
+
+El usuario dio las siguientes indicaciones. Tienen MÁXIMA PRIORIDAD. Definís la estructura, el contenido, el foco y el tono del informe en base a esto. Si algo que pedís contradice el formato predeterminado, siempre prevalece lo que pidió el usuario.
+
+"${instrucciones}"
+
+Antes de escribir el informe, respondé mentalmente:
+• ¿Qué pidió incluir o destacar?
+• ¿Qué pidió omitir o reducir?
+• ¿Qué formato, tono o estructura solicitó?
+• ¿Hay algún foco especial de producto, zona o cadena?
+
+El informe que generés tiene que reflejar claramente estas instrucciones.
+════════════════════════════════════════════════════
+
+`
+}
+
+function buildProfPart1(s, instrucciones=''){
+  const data={
+    periodoLabel:s.periodoLabel,
+    totalVisitas:s.totalVisitas,
+    visitasConArrivata:s.visitasConArrivata,
+    coberturaArrivata:s.coberturaArrivata,
+    localesRelevados:s.localesRelevados,
+    localesConArrivata:s.localesConArrivata,
+    marcas:s.marcas,
+    rankingProductos:s.rankingProductos,
+    byMonth:s.byMonth
+  };
+  return _instrBlock(instrucciones)+_profIntro+
+    `Elaborá la PRIMERA PARTE de un informe ejecutivo del período ${s.periodoLabel}.\n\nDATOS (JSON exacto — no cambies ningún número):\n${JSON.stringify(data,null,2)}\n\n`+
+    `Escribí ÚNICAMENTE estas secciones. NO escribas conclusión (va en la segunda parte):\n\n`+
+    `## Resumen Ejecutivo\nKPIs clave: total visitas, visitas con Arrivata, cobertura %, locales relevados, locales con Arrivata. Máximo 4 highlights.\n\n`+
+    `## Análisis Mensual Detallado\nPara CADA mes en byMonth: tabla (mes | visitas | visitas con Arrivata | cobertura% | marca líder competidora), variación vs mes anterior, productos Arrivata presentes ese mes con sus coberturas reales.\n\n`+
+    `## Análisis Competitivo\nTabla de todas las marcas con visitasConPresencia, totalVisitas y cobertura%. Tendencias competitivas mes a mes según los datos.\n\n`+
+    `## Ranking de Productos Arrivata\nTabla completa con todos los productos de rankingProductos: nombre | visitas | presencia% | promedio unidades. Análisis de cuáles lideran y cuáles necesitan atención.\n\n`+
+    `Usá SOLO los números del JSON. Tablas Markdown. Tono ejecutivo.`;
+}
+
+function buildProfPart2(s, instrucciones=''){
+  const data={
+    periodoLabel:s.periodoLabel,
+    totalVisitas:s.totalVisitas,
+    visitasConArrivata:s.visitasConArrivata,
+    coberturaArrivata:s.coberturaArrivata,
+    marcas:s.marcas,
+    zonas:s.zonas,
+    rankingProductos:s.rankingProductos
+  };
+  return _instrBlock(instrucciones)+_profIntro+
+    `Elaborá la SEGUNDA PARTE de un informe ejecutivo del período ${s.periodoLabel}.\n\nDATOS (JSON exacto — no cambies ningún número):\n${JSON.stringify(data,null,2)}\n\n`+
+    `La primera parte ya cubrió: Resumen Ejecutivo, Análisis Mensual, Análisis Competitivo y Ranking de Productos.\n`+
+    `Escribí ÚNICAMENTE estas secciones faltantes:\n\n`+
+    `## Análisis Geográfico por Zona\nTabla con TODAS las zonas de zonas[]: zona | totalVisitas | visitasConArrivata | cobertura%. Zonas fuertes y débiles con datos reales.\n\n`+
+    `## Tendencias e Insights Estratégicos\nPatrones reales observados en los datos: tendencias de cobertura, productos con mejor/peor evolución, zonas con cambios significativos.\n\n`+
+    `## Matriz de Riesgos y Oportunidades\nTabla top 5 riesgos y top 5 oportunidades basados en los datos reales (no genéricos). Impacto y urgencia.\n\n`+
+    `## Plan de Acción Estratégico\nTabla con 10 acciones concretas y medibles basadas en los datos: qué hacer, dónde (zona/local), cuándo, responsable.\n\n`+
+    `## Conclusión Final\nSíntesis del estado real de Arrivata: qué funciona, qué no, cuál es LA recomendación más importante. Mínimo 3 párrafos con datos concretos.\n\n`+
+    `Usá SOLO los números del JSON. Tablas Markdown. Tono ejecutivo orientado a decisiones.`;
+}
+
+function buildPrompt(type, fromDate, toDate, rtype='simple', instrucciones=''){
+  let data, periodoLabel;
+  if(type==='personalizado'&&fromDate&&toDate){
+    data=app.raw.filter(r=>{ const d=parseDate(r['FECHA']); return d&&d>=fromDate&&d<=toDate; });
+    const fmtOpts={day:'numeric',month:'long',year:'numeric'};
+    periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
+  } else {
+    const days=type==='semanal'?7:30;
+    data=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=new Date(Date.now()-days*864e5);});
+    periodoLabel=type==='semanal'?'última semana':'último mes';
+  }
+  const n=data.length;
+  const conArr=data.filter(r=>hasPresence(r,'ARRIVATA')).length;
+  const brandStats=Object.keys(app.brandCols).map(b=>{const on=data.filter(r=>hasPresence(r,b)).length;return{marca:b,visitasConPresencia:on,totalVisitas:n,cobertura:n?Math.round(on/n*100)+'%':'0%'};}).sort((a,b)=>parseInt(b.cobertura)-parseInt(a.cobertura));
   const zones={};
   data.forEach(r=>{const z=r._zona||'—';zones[z]=zones[z]||{t:0,on:0};zones[z].t++;if(hasPresence(r,'ARRIVATA'))zones[z].on++;});
-  const zonaStats=Object.entries(zones).map(([z,v])=>({zona:z,total:v.t,con:v.on,pct:v.t?Math.round(v.on/v.t*100):0})).filter(d=>d.zona!=='—').sort((a,b)=>b.pct-a.pct);
-  const stats={periodo:type==='semanal'?'última semana':'último mes',totalVisitas:n,coberturaArrivata:(brandStats.find(b=>b.marca==='ARRIVATA')?.pct||0)+'%',comparacionMarcas:brandStats,arrivataPerZona:zonaStats};
-  return `Sos analista comercial de ARRIVATA, marca de lácteos gourmet (burrata, bocconcinos, ricotta, etc.) en supermercados argentinos.\n\nGenerá un reporte ${type} en español basado en:\n\n${JSON.stringify(stats,null,2)}\n\nMarcas competidoras: FESTA, WAPI, CUISINE, CARREFOUR.\n\n## Resumen Ejecutivo\n## Métricas de Presencia\n## Oportunidades y Alertas\n## Acciones Recomendadas (3-5 acciones concretas)\n\nFormato Markdown, tono profesional, usá los números reales.`;
+  const zonaStats=Object.entries(zones).map(([z,v])=>({zona:z,totalVisitas:v.t,visitasConArrivata:v.on,cobertura:v.t?Math.round(v.on/v.t*100)+'%':'0%'})).filter(d=>d.zona!=='—').sort((a,b)=>parseInt(b.cobertura)-parseInt(a.cobertura));
+  const arrPct=(brandStats.find(b=>b.marca==='ARRIVATA')?.cobertura||'0%');
+  const intro=`Sos analista comercial de ARRIVATA, marca de lácteos gourmet (burrata, bocconcinos, ricotta, etc.) en supermercados argentinos. Marcas competidoras: FESTA, WAPI, CUISINE, CARREFOUR.\n\nREGLAS: Solo usás los números del JSON de DATOS. Nunca inventás cifras ni productos. Si un dato no está, no lo mencionás.\n\n`;
+
+  if(rtype==='complejo'||rtype==='profesional'){
+    const monthGroups=groupByMonth(data);
+    const overall={periodoLabel,totalVisitas:n,visitasConArrivata:conArr,coberturaArrivata:arrPct,marcas:brandStats,zonas:zonaStats,productosArrivata:productStats(data)};
+
+    if(rtype==='complejo'){
+      const byMonthC=monthGroups.map(([key,rows])=>{
+        const nr=rows.length, con=rows.filter(r=>hasPresence(r,'ARRIVATA')).length;
+        const ms=monthStats(rows);
+        return {mes:buildMonthLabel(key),totalVisitas:nr,visitasConArrivata:con,coberturaArrivata:ms.coberturaArrivata,marcas:ms.marcas,productosArrivata:productStats(rows)};
+      });
+      return _instrBlock(instrucciones)+intro+`Generá un informe analítico del período ${periodoLabel}.\n\nRESUMEN GENERAL:\n${JSON.stringify(overall,null,2)}\n\nDATOS MES A MES:\n${JSON.stringify(byMonthC,null,2)}\n\n`+
+        `Incluí:\n## Resumen Ejecutivo del Período\n## Análisis Mes a Mes\n(Cada mes: tabla con cobertura Arrivata, marcas, productos, variación vs mes anterior)\n## Ranking de Productos Arrivata\n## Comparación de Marcas\n## Análisis Geográfico\n## Oportunidades y Alertas\n## Plan de Acción (5-7 acciones)\n## Conclusión\n\nUsá tablas Markdown. Solo datos reales del JSON.`;
+    }
+
+    // profesional — rama legacy (fallback)
+    return _instrBlock(instrucciones)+intro+`Elaborá un informe ejecutivo del período ${periodoLabel}.\n\nDATOS:\n${JSON.stringify({...overall,byMonth:monthGroups.map(([key,rows])=>{const ms=monthStats(rows);return{mes:buildMonthLabel(key),totalVisitas:ms.totalVisitas,coberturaArrivata:ms.coberturaArrivata,marcas:ms.marcas,productosArrivata:productStats(rows)};})},null,2)}\n\n`+
+      `Incluí: Resumen Ejecutivo, Análisis Mensual, Análisis Competitivo, Análisis de Productos, Análisis Geográfico, Tendencias, Riesgos y Oportunidades, Plan de Acción (10 acciones), Conclusión Final.\nUsá tablas Markdown. Solo datos reales.`;
+  }
+
+  // simple (default)
+  const tipoReporte=type==='semanal'?'semanal':type==='mensual'?'mensual':('del período '+periodoLabel);
+  const stats={periodoLabel,totalVisitas:n,visitasConArrivata:conArr,coberturaArrivata:arrPct,marcas:brandStats,zonas:zonaStats,productosArrivata:productStats(data)};
+  return _instrBlock(instrucciones)+intro+`Generá un reporte ${tipoReporte} en español.\n\nDATOS:\n${JSON.stringify(stats,null,2)}\n\n## Resumen Ejecutivo\n## Métricas de Presencia por Marca\n## Productos Arrivata (ranking por presencia)\n## Análisis por Zona\n## Oportunidades y Alertas\n## Acciones Recomendadas (3-5 concretas)\n\nFormato Markdown, tono profesional, solo números reales del JSON.`;
+}
+
+// ── Report type selector ─────────────────────────────────────
+function setRtype(btn){
+  document.querySelectorAll('.rtype-btn').forEach(b=>b.classList.remove('active-rtype'));
+  btn.classList.add('active-rtype');
+}
+function getRtype(){ return document.querySelector('.rtype-btn.active-rtype')?.dataset.v||'simple'; }
+
+// ── Monthly helpers ───────────────────────────────────────────
+function groupByMonth(data){
+  const months={};
+  data.forEach(r=>{
+    const d=parseDate(r['FECHA']); if(!d) return;
+    const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    if(!months[key]) months[key]=[];
+    months[key].push(r);
+  });
+  return Object.entries(months).sort((a,b)=>a[0].localeCompare(b[0]));
+}
+function monthStats(rows){
+  const n=rows.length;
+  const brandStats=Object.keys(app.brandCols).map(b=>{const on=rows.filter(r=>hasPresence(r,b)).length;return{marca:b,con:on,pct:n?Math.round(on/n*100):0};}).sort((a,b)=>b.pct-a.pct);
+  const zones={};
+  rows.forEach(r=>{const z=r._zona||'—';if(z==='—') return;zones[z]=zones[z]||{t:0,on:0};zones[z].t++;if(hasPresence(r,'ARRIVATA'))zones[z].on++;});
+  const zonaStats=Object.entries(zones).map(([z,v])=>({zona:z,total:v.t,con:v.on,pct:v.t?Math.round(v.on/v.t*100):0})).sort((a,b)=>b.pct-a.pct).slice(0,5);
+  return {totalVisitas:n,coberturaArrivata:(brandStats.find(b=>b.marca==='ARRIVATA')?.pct||0)+'%',marcas:brandStats,zonas:zonaStats};
+}
+function buildMonthLabel(key){
+  const [y,m]=key.split('-');
+  return new Date(+y,+m-1,1).toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+}
+function productStats(rows){
+  const arrCols=app.brandCols.ARRIVATA;
+  if(!arrCols||!arrCols.length) return [];
+  return arrCols.map(col=>{
+    const name=colLabel(col);
+    // Usamos colPresent (idéntico a hasPresence) para que producto y cobertura de marca sean coherentes
+    const withProd=rows.filter(r=>colPresent(r,col));
+    const total=withProd.reduce((s,r)=>s+parseQty(r[col]),0);
+    const pct=rows.length?Math.round(withProd.length/rows.length*100):0;
+    const avg=(withProd.length&&total>0)?Math.round(total/withProd.length*10)/10:0;
+    return {producto:name,visitas:withProd.length,presencia:pct+'%',promedioUnidades:avg,totalUnidades:total};
+  }).filter(p=>p.visitas>0).sort((a,b)=>b.visitas-a.visitas);
+}
+
+// ── Professional charts ───────────────────────────────────────
+function renderReportCharts(fromDate,toDate){
+  const data=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
+  const monthGroups=groupByMonth(data);
+  const chartsEl=document.getElementById('report-charts');
+  if(monthGroups.length<2){ chartsEl.style.display='none'; return; }
+
+  const labels=monthGroups.map(([k])=>buildMonthLabel(k));
+  const arrPcts=monthGroups.map(([,rows])=>{const n=rows.length,on=rows.filter(r=>hasPresence(r,'ARRIVATA')).length;return n?Math.round(on/n*100):0;});
+  const brands=['ARRIVATA','FESTA','WAPI','CUISINE','CARREFOUR'];
+  const brandLines=brands.map(b=>({
+    label:b,
+    data:monthGroups.map(([,rows])=>{const n=rows.length,on=rows.filter(r=>hasPresence(r,b)).length;return n?Math.round(on/n*100):0;}),
+    borderColor:BRAND_COLORS[b], backgroundColor:BRAND_COLORS[b]+'30', tension:.35, pointRadius:4
+  }));
+
+  chartsEl.innerHTML=`<div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:12px;font-size:.88rem;border-bottom:2px solid var(--border);padding-bottom:8px">Gráficos del período</div>`+
+    `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:4px">`+
+    `<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cobertura Arrivata — mes a mes</div><div style="height:200px"><canvas id="rc-trend"></canvas></div></div>`+
+    `<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Comparación de marcas por mes</div><div style="height:200px"><canvas id="rc-brands"></canvas></div></div>`+
+    `</div>`;
+  chartsEl.style.display='block';
+
+  const scaleOpts={y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}},x:{ticks:{font:{size:9},color:'#7B6A55',maxRotation:30},grid:{display:false}}};
+  new Chart(document.getElementById('rc-trend'),{type:'line',data:{labels,datasets:[{label:'Arrivata %',data:arrPcts,borderColor:BRAND_COLORS.ARRIVATA,backgroundColor:BRAND_COLORS.ARRIVATA+'25',fill:true,tension:.35,pointRadius:5,pointBackgroundColor:BRAND_COLORS.ARRIVATA}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw}%`}}},scales:scaleOpts}});
+  new Chart(document.getElementById('rc-brands'),{type:'line',data:{labels,datasets:brandLines},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:9},color:'#7B6A55'}}},scales:scaleOpts}});
+}
+
+// ── Download as Word ──────────────────────────────────────────
+function downloadAsWord(){
+  const title=document.getElementById('report-title').textContent||'Reporte Arrivata';
+  const outputEl=document.getElementById('report-output');
+  const chartsEl=document.getElementById('report-charts');
+
+  let chartsHtml='';
+  if(chartsEl&&chartsEl.style.display!=='none'){
+    chartsEl.querySelectorAll('canvas').forEach(canvas=>{
+      try{
+        const img=canvas.toDataURL('image/png');
+        chartsHtml+=`<p style="text-align:center"><img src="${img}" style="max-width:100%;display:block;margin:8pt auto"></p>`;
+      }catch(e){}
+    });
+  }
+
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${title}</title>
+<style>
+  body{font-family:Calibri,sans-serif;font-size:11pt;color:#1C1208;margin:2.5cm}
+  h1{font-size:22pt;color:#8B1714;font-family:Georgia,serif;text-align:center;margin-bottom:4pt}
+  h2{font-size:14pt;color:#8B1714;border-bottom:2px solid #E5D9C4;padding-bottom:4pt;margin-top:18pt;font-family:Georgia,serif}
+  h3{font-size:12pt;color:#7B6A55;margin-top:12pt}
+  p{line-height:1.65;margin-bottom:6pt}
+  table{border-collapse:collapse;width:100%;margin:10pt 0;font-size:9.5pt}
+  th{background:#FAF6EE;padding:6pt 8pt;text-align:left;font-weight:bold;border:1px solid #E5D9C4}
+  td{padding:5pt 8pt;border:1px solid #E5D9C4}
+  ul,ol{margin-left:18pt;margin-bottom:6pt}
+  li{margin-bottom:3pt;line-height:1.5}
+  strong{font-weight:bold}
+  .cover{text-align:center;border-bottom:3px solid #8B1714;padding-bottom:16pt;margin-bottom:24pt}
+  .generated{font-size:9pt;color:#7B6A55;margin-top:6pt}
+</style></head>
+<body>
+<div class="cover">
+  <h1>${title}</h1>
+  <p class="generated">Generado por Arrivata Dashboard · ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</p>
+</div>
+${chartsHtml}
+${outputEl.innerHTML}
+</body></html>`;
+
+  const blob=new Blob(['﻿',html],{type:'application/msword'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=title.replace(/[^\w\sáéíóúñÁÉÍÓÚÑ]/g,'_').trim()+'.doc';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── File upload ───────────────────────────────────────────────
+function fileDragOver(e){ e.preventDefault(); document.getElementById('file-drop-zone').classList.add('drag-over'); }
+function fileDragLeave(e){ document.getElementById('file-drop-zone').classList.remove('drag-over'); }
+function fileDrop(e){ e.preventDefault(); fileDragLeave(e); handleFileSelect(e.dataTransfer.files); }
+
+async function handleFileSelect(files){
+  for(const file of files){
+    if(file.size > 10*1024*1024){ alert(`"${file.name}" supera el límite de 10 MB.`); continue; }
+    const processed = await processUploadedFile(file);
+    if(processed){ app.uploadedFiles.push(processed); renderFileList(); }
+  }
+  document.getElementById('file-input').value='';
+}
+
+async function processUploadedFile(file){
+  const name=file.name, mime=file.type;
+  try{
+    if(mime.startsWith('image/')){
+      const b64=await fileToBase64(file);
+      return {name,icon:'🖼️',apiContent:{type:'image',source:{type:'base64',media_type:mime,data:b64}}};
+    }
+    if(mime==='application/pdf'||name.endsWith('.pdf')){
+      const b64=await fileToBase64(file);
+      return {name,icon:'📄',apiContent:{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}}};
+    }
+    if(name.endsWith('.xlsx')||name.endsWith('.xls')){
+      const ab=await file.arrayBuffer();
+      const wb=typeof XLSX!=='undefined'?XLSX.read(ab,{type:'array'}):null;
+      if(!wb){return {name,icon:'📊',apiContent:{type:'text',text:`[Excel: ${name}]\n(Instalá SheetJS para leer este archivo)`}};}
+      let txt='';
+      wb.SheetNames.forEach(s=>{ txt+=`\n[Hoja: ${s}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[s]); });
+      return {name,icon:'📊',apiContent:{type:'text',text:`[Excel: ${name}]\n${txt}`}};
+    }
+    // CSV, TXT, MD y cualquier otro texto
+    const txt=await fileToText(file);
+    const icon=name.endsWith('.csv')?'📋':'📝';
+    return {name,icon,apiContent:{type:'text',text:`[Archivo: ${name}]\n${txt}`}};
+  }catch(e){ alert(`No se pudo leer "${name}": ${e.message}`); return null; }
+}
+
+function fileToBase64(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+}
+function fileToText(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result);
+    r.onerror=rej;
+    r.readAsText(file,'UTF-8');
+  });
+}
+
+function removeUploadedFile(i){
+  app.uploadedFiles.splice(i,1);
+  renderFileList();
+}
+
+function renderFileList(){
+  const el=document.getElementById('file-list');
+  if(!el) return;
+  if(!app.uploadedFiles.length){ el.innerHTML=''; return; }
+  el.innerHTML=app.uploadedFiles.map((f,i)=>
+    `<div class="file-chip" title="${esc(f.name)}">${f.icon} <span>${esc(f.name)}</span><button class="file-chip-rm" onclick="removeUploadedFile(${i})">×</button></div>`
+  ).join('');
+}
+
+function buildFileBlocks(){
+  return app.uploadedFiles.map(f=>f.apiContent);
+}
+
+// ── Análisis por cadena de supermercado ───────────────────────
+const CHAIN_NAMES=['JUMBO/DISCO','COTO','CARREFOUR/INC'];
+
+function chainOf(localName){
+  if(!localName) return null;
+  const u=String(localName).toUpperCase();
+  if(/JUMBO|DISCO/.test(u)) return 'JUMBO/DISCO';
+  if(/COTO/.test(u)) return 'COTO';
+  if(/CARREFOUR|\bINC\b/.test(u)) return 'CARREFOUR/INC';
+  return null;
+}
+
+function getChainStats(fromDate, toDate){
+  const keys=Object.keys(app.raw[0]||{});
+  const localField=keys.find(k=>/^local$/i.test(k.trim()))||'Local';
+  const fechaField=keys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
+  const data=app.raw.filter(r=>{const d=parseDate(r[fechaField]);return d&&d>=fromDate&&d<=toDate;});
+  const fmtOpts={day:'numeric',month:'long',year:'numeric'};
+  const periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
+  const n=data.length;
+
+  function calcChain(chainName){
+    const rows=data.filter(r=>chainOf(r[localField])===chainName);
+    if(!rows.length) return {cadena:chainName,sinDatos:true,totalVisitas:0};
+    const nr=rows.length;
+    const conArr=rows.filter(r=>hasPresence(r,'ARRIVATA')).length;
+    const marcas=Object.keys(app.brandCols).map(b=>{
+      const on=rows.filter(r=>hasPresence(r,b)).length;
+      return {marca:b,visitasConPresencia:on,totalVisitas:nr,cobertura:nr?Math.round(on/nr*100)+'%':'0%'};
+    }).sort((a,b)=>parseInt(b.cobertura)-parseInt(a.cobertura));
+    const locales=[...new Set(rows.map(r=>r[localField]).filter(Boolean))].sort();
+    const productosArrivata=productStats(rows);  // usa colPresent — coherente con marcas
+    return {
+      cadena:chainName,
+      totalVisitas:nr,
+      visitasConArrivata:conArr,
+      coberturaArrivata:nr?Math.round(conArr/nr*100)+'%':'0%',
+      localesRelevados:locales.length,
+      listaLocales:locales,
+      marcas,
+      productosArrivata
+    };
+  }
+
+  const byChain=CHAIN_NAMES.map(calcChain);
+  const localesSinCadena=[...new Set(data.filter(r=>!chainOf(r[localField])).map(r=>r[localField]).filter(Boolean))];
+  const marcasGlobal=Object.keys(app.brandCols).map(b=>{
+    const on=data.filter(r=>hasPresence(r,b)).length;
+    return {marca:b,visitasConPresencia:on,totalVisitas:n,cobertura:n?Math.round(on/n*100)+'%':'0%'};
+  }).sort((a,b)=>parseInt(b.cobertura)-parseInt(a.cobertura));
+  return {
+    periodoLabel,
+    totalVisitas:n,
+    visitasConArrivata:data.filter(r=>hasPresence(r,'ARRIVATA')).length,
+    coberturaArrivataGlobal:(marcasGlobal.find(m=>m.marca==='ARRIVATA')?.cobertura||'0%'),
+    localesSinCadenaAsignada:localesSinCadena,
+    byChain,
+    rankingProductosGlobal:productStats(data)
+  };
+}
+
+const _chainIntro=`Sos analista comercial senior de ARRIVATA, marca argentina de lácteos gourmet (burrata, bocconcinos, ricotta) en supermercados.
+
+REGLAS ABSOLUTAS — sin excepciones:
+• Solo usás los números que están en el JSON de DATOS. Nunca inventás cifras, porcentajes ni productos.
+• Si un dato no está en los DATOS, no lo mencionás.
+• Las coberturas (%) ya están calculadas en los DATOS — usálas tal cual.
+• Nunca mencionés productos que no aparezcan en productosArrivata de los DATOS.
+
+`;
+
+function buildChainPart1(stats, instrucciones=''){
+  const data={
+    periodoLabel:stats.periodoLabel,
+    totalVisitas:stats.totalVisitas,
+    coberturaArrivataGlobal:stats.coberturaArrivataGlobal,
+    sinCadenaAsignada:stats.sinCadenaAsignada,
+    byChain:stats.byChain
+  };
+  return _instrBlock(instrucciones)+_chainIntro+
+`Elaborá la PRIMERA PARTE de un informe por cadena de supermercado para el período: ${stats.periodoLabel}.
+
+DATOS:
+${JSON.stringify(data,null,2)}
+
+Escribí ÚNICAMENTE estas secciones. NO escribas ranking de productos ni plan de acción (van en la segunda parte):
+
+## Resumen Ejecutivo por Cadena
+Tabla: cadena | locales relevados | visitas | cobertura Arrivata | principal competidor.
+
+## Análisis por Cadena
+
+### 🛒 JUMBO / DISCO
+- Locales relevados y volumen de visitas
+- Cobertura de Arrivata (% de visitas con Arrivata presente)
+- Desglose de productos: cuáles entran bien, cuáles faltan
+- Marcas competidoras y su cobertura en esta cadena
+- Fortalezas, debilidades y oportunidades concretas
+
+### 🛒 COTO
+(mismo formato)
+
+### 🛒 CARREFOUR / INC
+(mismo formato)
+
+## Comparación Competitiva entre Cadenas
+Tabla: marca × cadena con cobertura (%). Dónde Arrivata lidera, dónde está en desventaja.
+
+Usá tablas Markdown. Números reales. Tono ejecutivo.`;
+}
+
+function buildChainPart2(stats, instrucciones=''){
+  const data={
+    periodoLabel:stats.periodoLabel,
+    byChain:stats.byChain.map(c=>({cadena:c.cadena,mejoresProductos:c.mejoresProductos,totalVisitas:c.totalVisitas})),
+    rankingProductosGlobal:stats.rankingProductosGlobal
+  };
+  return _instrBlock(instrucciones)+_chainIntro+
+`Elaborá la SEGUNDA PARTE del informe por cadena del período: ${stats.periodoLabel}.
+
+La primera parte ya cubrió: Resumen Ejecutivo, análisis de JUMBO/DISCO, COTO y CARREFOUR/INC, y Comparación Competitiva.
+
+DATOS DE PRODUCTOS:
+${JSON.stringify(data,null,2)}
+
+Escribí ÚNICAMENTE estas secciones faltantes:
+
+## Ranking de Productos por Cadena
+Tabla: producto | JUMBO/DISCO | COTO | CARREFOUR/INC (presencia % en cada una). Qué productos funcionan mejor en cada cadena y cuáles necesitan atención.
+
+## Plan de Acción por Cadena
+Para cada cadena: 3-4 acciones prioritarias concretas y ejecutables (con números y nombres de locales si aplica).
+
+## Conclusión Estratégica
+Estado general de Arrivata en el canal supermercadista. Cadena prioritaria donde actuar primero y por qué. Mínimo 2-3 párrafos sólidos.`;
 }
 
 function copyReport(){
