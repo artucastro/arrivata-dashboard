@@ -2346,7 +2346,7 @@ function renderVFProducts(){
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">SI</button>
           <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','no')" id="vf-no-${id}"
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">NO</button>
-          <input type="text" inputmode="numeric" pattern="[0-9]*" id="vf-qty-${id}" data-vid="${id}"
+          <input type="text" inputmode="text" id="vf-qty-${id}" data-vid="${id}"
             placeholder="cant." oninput="VF_QTY[this.dataset.vid]=this.value"
             style="width:60px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:.82rem;display:none">
         </div>`;
@@ -2398,8 +2398,8 @@ async function submitVisita(){
       if(state.sn==='no'){ productos[col]=''; return; }
       // SI: leer cantidad desde VF_QTY (capturado con oninput)
       const id=col.replace(/\W/g,'_');
-      const rawQty=String(VF_QTY[id]||'').replace(/\D/g,'');
-      productos[col]=rawQty!==''?parseInt(rawQty,10)||1:1;
+      const rawQty=String(VF_QTY[id]||'').trim();
+      productos[col]=rawQty!==''?rawQty:'1';
     });
   });
 

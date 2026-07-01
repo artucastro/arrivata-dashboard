@@ -28,7 +28,7 @@ function doPost(e) {
     // Construir la fila nueva alineada con los encabezados
     const row = headers.map(h => {
       if (h === 'FECHA')                           return data.fecha || '';
-      if (h === 'Dia' || h === 'Día' || h === 'DIA') return data.dia || '';
+      if (/^d[iíI][aá]$/i.test(h.trim()))             return data.dia || '';
       if (h === 'Local')                           return data.local || '';
       if (h === 'Ubicación' || h === 'Ubicacion') return data.ubicacion || '';
       if (data.productos && h in data.productos)   return data.productos[h];
