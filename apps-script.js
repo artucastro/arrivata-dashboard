@@ -9,7 +9,7 @@
 // La URL no cambia.
 // ─────────────────────────────────────────────────────────────
 
-// ── GET: leer notas ──────────────────────────────────────────
+// ── GET: leer notas o datos de local ─────────────────────────
 function doGet(e) {
   if (e.parameter.action === 'getNotas') {
     const all = PropertiesService.getScriptProperties().getProperties();
@@ -21,6 +21,20 @@ function doGet(e) {
       .createTextOutput(JSON.stringify({ ok: true, notas }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+
+  if (e.parameter.action === 'getLocalData') {
+    const all = PropertiesService.getScriptProperties().getProperties();
+    const localData = {};
+    Object.keys(all).forEach(k => {
+      if (k.startsWith('localdata|')) {
+        try { localData[k.slice(10)] = JSON.parse(all[k]); } catch(_) {}
+      }
+    });
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, localData }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
 }
 
@@ -28,6 +42,15 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
+
+    // ── Guardar datos del local ──────────────────────────────
+    if (data.action === 'saveLocalData') {
+      const key = 'localdata|' + data.local;
+      PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(data.datos || {}));
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     // ── Guardar nota ─────────────────────────────────────────
     if (data.action === 'saveNota') {

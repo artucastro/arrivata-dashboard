@@ -274,6 +274,41 @@
   </div>
 </div>
 
+<!-- ── MODAL: EDITAR DATOS DEL LOCAL ────────────────────────── -->
+<div id="modal-local-data" class="modal-backdrop" style="display:none;z-index:70">
+  <div class="modal" style="max-width:440px;width:94%;padding:0">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div id="modal-ld-titulo" style="font-family:'Playfair Display',serif;font-weight:700;color:var(--red);font-size:1rem">Datos del local</div>
+        <div id="modal-ld-local" style="font-size:.72rem;color:var(--muted);margin-top:1px"></div>
+      </div>
+      <button onclick="document.getElementById('modal-local-data').style.display='none'" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:.75rem;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Nombre del encargado</label>
+        <input id="ld-encargado" type="text" placeholder="ej. María González" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.88rem;box-sizing:border-box;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Teléfono</label>
+        <input id="ld-telefono" type="text" inputmode="tel" placeholder="ej. 11-4567-8901" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.88rem;box-sizing:border-box;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Email</label>
+        <input id="ld-email" type="email" placeholder="ej. encargado@local.com" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.88rem;box-sizing:border-box;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Notas generales</label>
+        <textarea id="ld-notas" rows="3" placeholder="Observaciones sobre el local..." style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.88rem;box-sizing:border-box;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button onclick="guardarLocalData()" style="flex:1;padding:10px;background:var(--red);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:.88rem;cursor:pointer">Guardar</button>
+        <button onclick="document.getElementById('modal-local-data').style.display='none'" style="padding:10px 18px;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--muted);font-weight:700;font-size:.88rem;cursor:pointer">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL: VER NOTA ───────────────────────────────────────── -->
 <div id="modal-nota" class="modal-backdrop" style="display:none;z-index:70">
   <div class="modal" style="max-width:420px;width:94%;padding:0">
@@ -652,6 +687,15 @@
       </div>
     </div>
 
+    <!-- Datos del local -->
+    <div id="det-localdata-card" class="card" style="padding:16px 20px;margin-bottom:18px;display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-family:'Playfair Display',serif;font-weight:700;font-size:.9rem;color:var(--text)">Datos del local</span>
+        <button onclick="abrirEditarLocalData()" style="font-size:.72rem;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;font-weight:700">Editar</button>
+      </div>
+      <div id="det-localdata-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:.82rem"></div>
+    </div>
+
     <!-- Stat cards -->
     <div class="det-stats-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
       <div class="card" style="padding:16px">
@@ -800,7 +844,9 @@ const app = {
   detCharts: {},
   uploadedFiles: [],
   chartConfigs: [{datos:'marca',tipo:'bar'},{datos:'zona',tipo:'bar'}],
-  _notas: {}
+  _notas: {},
+  _localData: {},
+  detLocal: ''
 };
 
 // ── Login ────────────────────────────────────────────────────
@@ -899,6 +945,7 @@ function processCSV(csv){
     'Actualizado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
   setLoading(false);
   loadNotas();
+  loadLocalData();
 }
 
 function loadData(){
@@ -1216,6 +1263,7 @@ function colPresent(row, col){ const v=String(row[col]||'').trim(); return v!=='
 function openDetail(localName, from='main'){
   if(!localName) return;
   app._detFrom = from;
+  app.detLocal = localName;
 
   const visits=[...app.raw]
     .filter(r=>r['Local']===localName)
@@ -1246,6 +1294,8 @@ function openDetail(localName, from='main'){
   document.getElementById('locales-view').style.display='none';
   document.getElementById('detail-view').style.display='block';
   window.scrollTo(0,0);
+
+  renderLocalData(localName);
 
   // Reset to "Todo" when opening a new local
   app.detPeriodDays=0;
@@ -2346,6 +2396,83 @@ function verNota(local, fecha){
   document.getElementById('modal-nota').style.display='flex';
 }
 
+// ── Datos del local ──────────────────────────────────────────────
+function loadLocalData(){
+  if(!app.cfg.scriptUrl) return;
+  fetch(app.cfg.scriptUrl+'?action=getLocalData',{redirect:'follow'})
+    .then(r=>r.json())
+    .then(d=>{ if(d.ok) app._localData=d.localData||{}; })
+    .catch(()=>{});
+}
+
+function renderLocalData(localName){
+  const card=document.getElementById('det-localdata-card');
+  const content=document.getElementById('det-localdata-content');
+  const d=app._localData[localName]||{};
+  const fields=[
+    {label:'Encargado', val:d.encargado||''},
+    {label:'Teléfono', val:d.telefono||''},
+    {label:'Email', val:d.email||''},
+    {label:'Notas', val:d.notas||''},
+  ];
+  const hasAny=fields.some(f=>f.val);
+  card.style.display='block';
+  if(!hasAny){
+    content.innerHTML='<span style="color:var(--muted);font-size:.8rem;grid-column:1/-1">Sin datos cargados</span>';
+    return;
+  }
+  content.innerHTML=fields.filter(f=>f.val).map(f=>`
+    <div><span style="color:var(--muted);font-weight:700">${f.label}:</span></div>
+    <div style="color:var(--text)">${f.val.replace(/\n/g,'<br>')}</div>
+  `).join('');
+}
+
+let _ldLocalPendiente=null;
+
+function abrirEditarLocalData(){
+  // Reuse existing password gate pattern
+  const localName=app.detLocal||'';
+  if(!localName) return;
+  _ldLocalPendiente=localName;
+  const inp=document.getElementById('inp-clave');
+  if(inp) inp.value='';
+  document.getElementById('clave-err').style.display='none';
+  // Override checkClave target temporarily via flag
+  window._ldPending=true;
+  document.getElementById('modal-clave').style.display='flex';
+  setTimeout(()=>document.getElementById('inp-clave').focus(),100);
+}
+
+function openEditLocalDataModal(localName){
+  const d=app._localData[localName]||{};
+  document.getElementById('modal-ld-local').textContent=localName;
+  document.getElementById('ld-encargado').value=d.encargado||'';
+  document.getElementById('ld-telefono').value=d.telefono||'';
+  document.getElementById('ld-email').value=d.email||'';
+  document.getElementById('ld-notas').value=d.notas||'';
+  document.getElementById('modal-local-data').style.display='flex';
+}
+
+function guardarLocalData(){
+  const localName=_ldLocalPendiente||app.detLocal||'';
+  if(!localName) return;
+  const datos={
+    encargado:document.getElementById('ld-encargado').value.trim(),
+    telefono:document.getElementById('ld-telefono').value.trim(),
+    email:document.getElementById('ld-email').value.trim(),
+    notas:document.getElementById('ld-notas').value.trim(),
+  };
+  app._localData[localName]=datos;
+  renderLocalData(localName);
+  document.getElementById('modal-local-data').style.display='none';
+  if(app.cfg.scriptUrl){
+    fetch(app.cfg.scriptUrl,{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'saveLocalData',local:localName,datos})
+    }).catch(()=>{});
+  }
+}
+
 const VF_BRAND_LABELS = { ARRIVATA:'Arrivata', FESTA:'Festa', WAPI:'WAPI', CUISINE:'Cuisine', CARREFOUR:'Carrefour' };
 const VF_BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUISINE:'#A07830', CARREFOUR:'#0d9488' };
 
@@ -2399,7 +2526,12 @@ function abrirConClave(localName){
 function checkClave(){
   if(document.getElementById('inp-clave').value==='1234'){
     document.getElementById('modal-clave').style.display='none';
-    openCargarVisita(_claveLocalPendiente);
+    if(window._ldPending){
+      window._ldPending=false;
+      openEditLocalDataModal(_ldLocalPendiente);
+    } else {
+      openCargarVisita(_claveLocalPendiente);
+    }
   } else {
     document.getElementById('clave-err').style.display='block';
     document.getElementById('inp-clave').value='';
