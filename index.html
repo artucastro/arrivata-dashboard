@@ -2266,13 +2266,15 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 // ── CARGAR VISITA ─────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
-const VF = {}; // estado del formulario: colName -> { sn: null|'si'|'no', qty: '' }
+const VF = {};     // estado del formulario: colName -> { sn: null|'si'|'no' }
+const VF_QTY = {}; // id -> valor de cantidad (capturado con oninput)
 
 const VF_BRAND_LABELS = { ARRIVATA:'Arrivata', FESTA:'Festa', WAPI:'WAPI', CUISINE:'Cuisine', CARREFOUR:'Carrefour' };
 const VF_BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUISINE:'#A07830', CARREFOUR:'#0d9488' };
 
 function openCargarVisita(localName){
   Object.keys(VF).forEach(k=>delete VF[k]);
+  Object.keys(VF_QTY).forEach(k=>delete VF_QTY[k]);
 
   // Datalist de locales existentes
   const dl=document.getElementById('vf-local-list');
@@ -2329,7 +2331,8 @@ function renderVFProducts(){
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">SI</button>
           <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','no')" id="vf-no-${id}"
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">NO</button>
-          <input type="number" id="vf-qty-${id}" min="0" max="9999" placeholder="cant."
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="vf-qty-${id}" data-vid="${id}"
+            placeholder="cant." oninput="VF_QTY[this.dataset.vid]=this.value"
             style="width:60px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:.82rem;display:none">
         </div>`;
       }).join('')}
@@ -2370,16 +2373,17 @@ async function submitVisita(){
   const [y,mo,d]=fechaVal.split('-');
   const fecha=`${d}/${mo}/${y}`;
 
-  // Armar objeto de productos: colName -> cantidad (vacío si no marcado, 0 si NO, N si SI)
+  // Construir objeto de productos: colName -> valor
   const productos={};
   Object.keys(app.brandCols).forEach(brand=>{
     (app.brandCols[brand]||[]).forEach(col=>{
       const state=VF[col];
       if(!state||state.sn===null){ productos[col]=''; return; }
       if(state.sn==='no'){ productos[col]=0; return; }
+      // SI: leer cantidad desde VF_QTY (capturado con oninput)
       const id=col.replace(/\W/g,'_');
-      const qtyEl=document.getElementById(`vf-qty-${id}`);
-      productos[col]=qtyEl&&qtyEl.value!==''?parseInt(qtyEl.value)||1:1;
+      const rawQty=String(VF_QTY[id]||'').replace(/\D/g,'');
+      productos[col]=rawQty!==''?parseInt(rawQty,10)||1:1;
     });
   });
 
@@ -2399,8 +2403,23 @@ async function submitVisita(){
       headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({fecha, local, ubicacion:ubic, productos})
     });
+
+    // Optimistic update: agregar la fila a app.raw de inmediato
+    // (Google Sheets CSV tiene caché, puede tardar minutos en actualizarse)
+    const newRow={FECHA:fecha, Local:local, 'Ubicación':ubic, 'Ubicacion':ubic, _zona:extractZona(ubic)};
+    Object.keys(app.brandCols).forEach(brand=>{
+      (app.brandCols[brand]||[]).forEach(col=>{
+        newRow[col]=String(productos[col]!==undefined?productos[col]:'');
+      });
+    });
+    // Copiar otras columnas vacías para mantener estructura
+    if(app.raw.length){ Object.keys(app.raw[0]).forEach(k=>{ if(!(k in newRow)) newRow[k]=''; }); }
+    app.raw.push(newRow);
+    setPeriod(app.periodDays);
+    renderFaltantes();
+
     btn.textContent='¡Guardado!'; btn.style.background='#16a34a';
-    setTimeout(()=>{ closeCargarVisita(); loadData(); },1800);
+    setTimeout(()=>closeCargarVisita(), 1200);
   } catch(e){
     btn.textContent='Error — Reintentar'; btn.disabled=false;
     alert('No se pudo guardar. Verificá tu conexión e intentá de nuevo.');
