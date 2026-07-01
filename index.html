@@ -462,7 +462,11 @@
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:6px">
-      <div id="nav-supervisor" style="display:none;align-items:center;gap:8px;margin-right:4px">
+      <button id="nav-identificar-btn" onclick="abrirIdentificacion()" style="padding:6px 12px;font-size:.78rem;font-weight:700;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:5px;margin-right:4px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Identificarme
+      </button>
+      <div id="nav-supervisor" style="display:none;align-items:center;gap:8px;margin-right:4px;cursor:pointer" onclick="abrirIdentificacion()" title="Cambiar supervisor">
         <div style="text-align:right">
           <div id="nav-sup-nombre" style="font-size:.78rem;font-weight:700;color:var(--text);line-height:1.2"></div>
           <div id="nav-sup-zona" style="font-size:.65rem;color:var(--muted)"></div>
@@ -1070,7 +1074,13 @@ function checkLogin(){
 function refreshNavSupervisor(){
   const sup=app.supervisor;
   const el=document.getElementById('nav-supervisor');
-  if(!sup||!sup.name){ if(el) el.style.display='none'; return; }
+  const idBtn=document.getElementById('nav-identificar-btn');
+  if(!sup||!sup.name){
+    if(el) el.style.display='none';
+    if(idBtn) idBtn.style.display='flex';
+    return;
+  }
+  if(idBtn) idBtn.style.display='none';
   if(el) el.style.display='flex';
   document.getElementById('nav-sup-nombre').textContent=sup.name;
   document.getElementById('nav-sup-zona').textContent=sup.zona||'';
@@ -3136,8 +3146,18 @@ function ejecutarOpPendiente(supervisor){
   const {action,context}=_pendingVerOp;
   _pendingVerOp=null;
   _currentOpSupervisor=supervisor;
+  // Actualizar perfil del supervisor activo
+  app.supervisor=supervisor;
+  sessionStorage.setItem('arr_supervisor',JSON.stringify(supervisor));
+  if(supervisor.csvUrl) app.cfg.url=supervisor.csvUrl;
+  refreshNavSupervisor();
+  if(action==='identificar') return;
   if(action==='cargarVisita') openCargarVisita(context);
   else if(action==='editarLocalData') openEditLocalDataModal(context);
+}
+
+function abrirIdentificacion(){
+  abrirVerificacion('identificar', null);
 }
 
 function vfLocalChange(){
