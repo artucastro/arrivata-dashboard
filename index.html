@@ -232,7 +232,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div style="grid-column:1/-1">
           <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:4px;display:block">Local</label>
-          <input id="vf-local" list="vf-local-list" placeholder="Nombre del local..." style="width:100%">
+          <input id="vf-local" list="vf-local-list" placeholder="Nombre del local..." onchange="vfLocalChange()" style="width:100%">
           <datalist id="vf-local-list"></datalist>
         </div>
         <div style="grid-column:1/-1">
@@ -2311,6 +2311,19 @@ function closeCargarVisita(){
   document.getElementById('modal-visita').style.display='none';
 }
 
+function vfLocalChange(){
+  const name=document.getElementById('vf-local').value.trim();
+  if(!name) return;
+  const row=app.raw.find(r=>r['Local']===name);
+  if(row) document.getElementById('vf-ubic').value=row['Ubicación']||row['Ubicacion']||'';
+}
+
+const VF_DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+function getDiaFromFecha(fechaDDMMYYYY){
+  const [d,m,y]=fechaDDMMYYYY.split('/');
+  return VF_DIAS[new Date(+y,+m-1,+d).getDay()]||'';
+}
+
 function renderVFProducts(){
   const brands=Object.entries(app.brandCols).filter(([,cols])=>cols.length>0);
   if(!brands.length){
@@ -2373,6 +2386,7 @@ async function submitVisita(){
   // YYYY-MM-DD → DD/MM/YYYY
   const [y,mo,d]=fechaVal.split('-');
   const fecha=`${d}/${mo}/${y}`;
+  const dia=getDiaFromFecha(fecha);
 
   // Construir objeto de productos: colName -> valor
   const productos={};
@@ -2402,7 +2416,7 @@ async function submitVisita(){
       method:'POST',
       mode:'no-cors',
       headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({fecha, local, ubicacion:ubic, productos})
+      body:JSON.stringify({fecha, dia, local, ubicacion:ubic, productos})
     });
 
     // Optimistic update: agregar la fila a app.raw de inmediato
