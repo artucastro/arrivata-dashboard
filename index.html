@@ -197,34 +197,91 @@
 
 <!-- ── CONFIG MODAL ──────────────────────────────────────────── -->
 <div id="modal" class="modal-backdrop" style="display:none">
-  <div class="modal p-6">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div class="modal" style="max-width:580px;width:96%;max-height:92vh;padding:0;display:flex;flex-direction:column;overflow:hidden">
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div>
-        <h2 style="font-family:'Playfair Display',serif;font-size:1.15rem;font-weight:700;color:var(--red)">Configuración</h2>
-        <p style="font-size:.75rem;color:var(--muted);margin-top:2px">URL del sheet y API key de Anthropic</p>
+        <h2 style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--red)">Configuración</h2>
+        <p style="font-size:.72rem;color:var(--muted);margin-top:2px" id="cfg-subtitle">Ajustá los datos de conexión y tu perfil</p>
       </div>
       <button onclick="closeModal()" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
     </div>
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <!-- Body -->
+    <div style="overflow-y:auto;flex:1;padding:18px 20px;display:flex;flex-direction:column;gap:20px">
+      <!-- Perfil -->
+      <div id="cfg-perfil" style="background:var(--cream);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:14px">
+        <div id="cfg-avatar" style="width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;flex-shrink:0">?</div>
+        <div>
+          <div id="cfg-perfil-nombre" style="font-weight:700;font-size:.92rem;color:var(--text)">Sin identificar</div>
+          <div id="cfg-perfil-zona" style="font-size:.73rem;color:var(--muted);margin-top:1px">Ingresá con tu usuario para ver tus datos</div>
+        </div>
+      </div>
+      <!-- Conexión -->
       <div>
-        <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:6px">URL de Google Sheets (CSV)</label>
-        <input id="inp-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
-        <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Archivo → Compartir → Publicar en la web → CSV</p>
+        <div style="font-weight:700;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Conexión de datos</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:5px">URL de Google Sheets (CSV)</label>
+            <input id="inp-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
+            <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Archivo → Compartir → Publicar en la web → CSV</p>
+          </div>
+          <div>
+            <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:5px">URL Google Apps Script</label>
+            <input id="inp-script" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+            <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Para guardar visitas, notas y fotos desde el dashboard</p>
+          </div>
+          <div>
+            <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:5px">API Key de Anthropic <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+            <input id="inp-key" type="password" placeholder="sk-ant-...">
+            <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Solo para reportes con IA · console.anthropic.com</p>
+          </div>
+        </div>
       </div>
-      <div>
-        <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:6px">API Key de Anthropic</label>
-        <input id="inp-key" type="password" placeholder="sk-ant-...">
-        <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Solo para reportes con IA · console.anthropic.com</p>
+      <!-- Admin: Gestión de supervisores -->
+      <div id="cfg-admin-section" style="display:none;border-top:1px solid var(--border);padding-top:18px">
+        <div style="font-weight:700;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">Gestión de Supervisores</div>
+        <div id="admin-sup-list" style="margin-bottom:16px"></div>
+        <div style="border-top:1px solid var(--border);padding-top:14px">
+          <div style="font-weight:700;font-size:.85rem;color:var(--text);margin-bottom:10px">Agregar supervisor</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div>
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Nombre completo</label>
+              <input id="ns-nombre" type="text" placeholder="ej. Juan García" style="width:100%;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Usuario (sin espacios)</label>
+              <input id="ns-user" type="text" placeholder="ej. juan" style="width:100%;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Contraseña</label>
+              <input id="ns-pwd" type="text" placeholder="ej. gonza2025" style="width:100%;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Zona</label>
+              <input id="ns-zona" type="text" placeholder="ej. Zona Sur" style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="grid-column:1/-1">
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Nombre de la hoja en el Spreadsheet</label>
+              <input id="ns-sheet" type="text" placeholder="ej. Supervisión Juan" style="width:100%;box-sizing:border-box">
+            </div>
+            <div style="grid-column:1/-1">
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">URL CSV de esa hoja</label>
+              <input id="ns-csv" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=XXXX&output=csv" style="width:100%;box-sizing:border-box">
+              <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Archivo → Compartir → Publicar en la web → seleccionar la hoja → CSV</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button onclick="crearSupervisor()" style="flex:1;padding:9px;background:var(--red);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:.85rem;cursor:pointer">Crear supervisor</button>
+            <button onclick="limpiarFormSupervisor()" style="padding:9px 16px;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--muted);font-weight:700;font-size:.85rem;cursor:pointer">Limpiar</button>
+          </div>
+          <div id="admin-msg" style="display:none;margin-top:10px;font-size:.8rem;font-weight:700;text-align:center"></div>
+        </div>
       </div>
-      <div>
-        <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:6px">URL Google Apps Script</label>
-        <input id="inp-script" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-        <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Para guardar visitas desde el dashboard</p>
-      </div>
-      <div style="display:flex;gap:10px;padding-top:4px">
-        <button class="btn btn-blue" onclick="saveAndLoad()" style="flex:1">Guardar y cargar datos</button>
-        <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      </div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0">
+      <button class="btn btn-blue" onclick="saveAndLoad()" style="flex:1">Guardar y cargar datos</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -333,58 +390,6 @@
   </div>
 </div>
 
-<!-- ── MODAL: ADMIN SUPERVISORES ────────────────────────────── -->
-<div id="modal-admin" class="modal-backdrop" style="display:none;z-index:75">
-  <div class="modal" style="max-width:580px;width:96%;max-height:90vh;padding:0;display:flex;flex-direction:column;overflow:hidden">
-    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div>
-        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--red);font-size:1rem">Gestión de Supervisores</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:1px">Solo visible para administradores</div>
-      </div>
-      <button onclick="document.getElementById('modal-admin').style.display='none'" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
-    </div>
-    <div style="overflow-y:auto;flex:1;padding:18px 20px">
-      <!-- Lista de supervisores -->
-      <div id="admin-sup-list" style="margin-bottom:20px"></div>
-      <!-- Formulario nuevo supervisor -->
-      <div style="border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-weight:700;font-size:.85rem;color:var(--text);margin-bottom:12px">Agregar supervisor</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div>
-            <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Nombre completo</label>
-            <input id="ns-nombre" type="text" placeholder="ej. Juan García" style="width:100%;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Usuario (sin espacios)</label>
-            <input id="ns-user" type="text" placeholder="ej. juan" style="width:100%;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Contraseña</label>
-            <input id="ns-pwd" type="text" placeholder="ej. gonza2025" style="width:100%;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Zona</label>
-            <input id="ns-zona" type="text" placeholder="ej. Zona Sur" style="width:100%;box-sizing:border-box">
-          </div>
-          <div style="grid-column:1/-1">
-            <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Nombre de la hoja en el Spreadsheet</label>
-            <input id="ns-sheet" type="text" placeholder="ej. Supervisión Juan" style="width:100%;box-sizing:border-box">
-          </div>
-          <div style="grid-column:1/-1">
-            <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">URL CSV de esa hoja</label>
-            <input id="ns-csv" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=XXXX&output=csv" style="width:100%;box-sizing:border-box">
-            <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Archivo → Compartir → Publicar en la web → seleccionar la hoja → CSV</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px">
-          <button onclick="crearSupervisor()" style="flex:1;padding:9px;background:var(--red);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:.85rem;cursor:pointer">Crear supervisor</button>
-          <button onclick="limpiarFormSupervisor()" style="padding:9px 16px;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--muted);font-weight:700;font-size:.85rem;cursor:pointer">Limpiar</button>
-        </div>
-        <div id="admin-msg" style="display:none;margin-top:10px;font-size:.8rem;font-weight:700;text-align:center"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ── MODAL: LIGHTBOX FOTOS ─────────────────────────────────── -->
 <div id="modal-foto" class="modal-backdrop" style="display:none;z-index:90;background:rgba(0,0,0,0.88)" onclick="closeFotoLightbox()">
@@ -462,11 +467,7 @@
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:6px">
-      <button id="nav-identificar-btn" onclick="abrirIdentificacion()" style="padding:6px 12px;font-size:.78rem;font-weight:700;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:5px;margin-right:4px">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Identificarme
-      </button>
-      <div id="nav-supervisor" style="display:none;align-items:center;gap:8px;margin-right:4px;cursor:pointer" onclick="abrirIdentificacion()" title="Cambiar supervisor">
+      <div id="nav-supervisor" style="display:none;align-items:center;gap:8px;margin-right:4px">
         <div style="text-align:right">
           <div id="nav-sup-nombre" style="font-size:.78rem;font-weight:700;color:var(--text);line-height:1.2"></div>
           <div id="nav-sup-zona" style="font-size:.65rem;color:var(--muted)"></div>
@@ -493,10 +494,6 @@
       <button class="btn" onclick="abrirVerificacion('cargarVisita',null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span class="nav-btn-lbl">Nueva Visita</span>
-      </button>
-      <button id="nav-admin-btn" class="btn btn-ghost" onclick="abrirAdmin()" style="padding:6px 10px;font-size:.8rem;display:none">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-        <span class="nav-btn-lbl">Supervisores</span>
       </button>
       <button class="btn btn-blue" onclick="openModal()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -1074,29 +1071,41 @@ function checkLogin(){
 function refreshNavSupervisor(){
   const sup=app.supervisor;
   const el=document.getElementById('nav-supervisor');
-  const idBtn=document.getElementById('nav-identificar-btn');
-  if(!sup||!sup.name){
-    if(el) el.style.display='none';
-    if(idBtn) idBtn.style.display='flex';
-    return;
-  }
-  if(idBtn) idBtn.style.display='none';
+  if(!sup||!sup.name){ if(el) el.style.display='none'; return; }
   if(el) el.style.display='flex';
   document.getElementById('nav-sup-nombre').textContent=sup.name;
   document.getElementById('nav-sup-zona').textContent=sup.zona||'';
   document.getElementById('nav-sup-avatar').textContent=sup.name.charAt(0).toUpperCase();
-  const adminBtn=document.getElementById('nav-admin-btn');
-  if(adminBtn) adminBtn.style.display=sup.isAdmin?'flex':'none';
   // Actualizar subtítulo exportar con zona
   const sub=document.getElementById('export-subtitle');
   if(sub&&sup.zona) sub.textContent=sup.zona;
+  // Actualizar sección perfil del modal config si está abierto
+  actualizarCfgPerfil(sup);
+}
+
+function actualizarCfgPerfil(sup){
+  const nombre=document.getElementById('cfg-perfil-nombre');
+  const zona=document.getElementById('cfg-perfil-zona');
+  const avatar=document.getElementById('cfg-avatar');
+  const adminSec=document.getElementById('cfg-admin-section');
+  if(!sup||!sup.name){
+    if(nombre) nombre.textContent='Sin identificar';
+    if(zona) zona.textContent='Ingresá con tu usuario para ver tus datos';
+    if(avatar) avatar.textContent='?';
+    if(adminSec) adminSec.style.display='none';
+    return;
+  }
+  if(nombre) nombre.textContent=sup.name+(sup.isAdmin?' · Admin':'');
+  if(zona) zona.textContent=sup.zona||'Sin zona asignada';
+  if(avatar) avatar.textContent=sup.name.charAt(0).toUpperCase();
+  if(adminSec){
+    adminSec.style.display=sup.isAdmin?'block':'none';
+    if(sup.isAdmin) cargarListaSupervisores();
+  }
 }
 
 // ── Admin de Supervisores ─────────────────────────────────────
-function abrirAdmin(){
-  document.getElementById('modal-admin').style.display='flex';
-  cargarListaSupervisores();
-}
+function abrirAdmin(){ openModal(); }
 
 async function cargarListaSupervisores(){
   const list=document.getElementById('admin-sup-list');
@@ -1210,8 +1219,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// ── Modal ────────────────────────────────────────────────────
-function openModal(){ document.getElementById('inp-url').value=app.cfg.url; document.getElementById('inp-key').value=app.cfg.key||''; document.getElementById('inp-script').value=app.cfg.scriptUrl||''; document.getElementById('modal').style.display='flex'; }
+// ── Modal de configuración ────────────────────────────────────
+function openModal(){
+  // Si no hay scriptUrl configurado, abrir directo (primera vez)
+  if(!app.cfg.scriptUrl){
+    abrirConfigModal(app.supervisor);
+  } else {
+    abrirVerificacion('config', null);
+  }
+}
+function abrirConfigModal(sup){
+  document.getElementById('inp-url').value=app.cfg.url||'';
+  document.getElementById('inp-key').value=app.cfg.key||'';
+  document.getElementById('inp-script').value=app.cfg.scriptUrl||'';
+  actualizarCfgPerfil(sup||app.supervisor);
+  document.getElementById('modal').style.display='flex';
+}
 function closeModal(){ document.getElementById('modal').style.display='none'; }
 function saveAndLoad(){
   app.cfg.url = document.getElementById('inp-url').value.trim() || DEFAULT_URL;
@@ -3151,13 +3174,12 @@ function ejecutarOpPendiente(supervisor){
   sessionStorage.setItem('arr_supervisor',JSON.stringify(supervisor));
   if(supervisor.csvUrl) app.cfg.url=supervisor.csvUrl;
   refreshNavSupervisor();
-  if(action==='identificar') return;
+  if(action==='config'||action==='identificar'){
+    abrirConfigModal(supervisor);
+    return;
+  }
   if(action==='cargarVisita') openCargarVisita(context);
   else if(action==='editarLocalData') openEditLocalDataModal(context);
-}
-
-function abrirIdentificacion(){
-  abrirVerificacion('identificar', null);
 }
 
 function vfLocalChange(){
