@@ -182,20 +182,14 @@
   <img src="https://arrivata.com.ar/wp-content/uploads/2020/05/logo-arrivata.png" alt="Arrivata" style="height:90px;object-fit:contain;margin-bottom:36px">
   <div class="login-card">
     <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:var(--red);text-align:center;margin-bottom:6px">Acceso Privado</h2>
-    <p style="font-size:.82rem;color:var(--muted);text-align:center;margin-bottom:24px">Ingresá tu usuario y contraseña</p>
-    <input id="login-user" type="text" placeholder="Usuario"
-      style="margin-bottom:10px"
-      onkeydown="if(event.key==='Enter') document.getElementById('login-pwd').focus()">
+    <p style="font-size:.82rem;color:var(--muted);text-align:center;margin-bottom:24px">Ingresá la contraseña para continuar</p>
     <input id="login-pwd" type="password" placeholder="Contraseña"
-      style="margin-bottom:10px"
+      style="margin-bottom:10px;text-align:center;letter-spacing:.1em"
       onkeydown="if(event.key==='Enter') checkLogin()">
     <div id="login-err" style="display:none;color:#991b1b;font-size:.8rem;margin-bottom:12px;text-align:center;font-weight:700">
-      Usuario o contraseña incorrectos.
+      Contraseña incorrecta. Intentá de nuevo.
     </div>
-    <div id="login-loading" style="display:none;color:var(--muted);font-size:.8rem;margin-bottom:10px;text-align:center">
-      Verificando...
-    </div>
-    <button id="login-btn" class="btn btn-blue" onclick="checkLogin()" style="width:100%;justify-content:center;padding:10px;font-size:.95rem;margin-top:4px">
+    <button class="btn btn-blue" onclick="checkLogin()" style="width:100%;justify-content:center;padding:10px;font-size:.95rem;margin-top:4px">
       Ingresar
     </button>
   </div>
@@ -1060,55 +1054,16 @@ const app = {
 };
 
 // ── Login ────────────────────────────────────────────────────
-async function checkLogin(){
-  const user=document.getElementById('login-user').value.trim();
+function checkLogin(){
   const pwd=document.getElementById('login-pwd').value;
-  document.getElementById('login-err').style.display='none';
-
-  const scriptUrl=app.cfg.scriptUrl;
-
-  // Si no hay scriptUrl configurado, fallback al modo legacy (password fija)
-  if(!scriptUrl){
-    if(pwd==='Arrivata123'){
-      sessionStorage.setItem('arr_auth','1');
-      document.getElementById('login-page').style.display='none';
-      refreshNavSupervisor();
-    } else {
-      document.getElementById('login-err').style.display='block';
-      document.getElementById('login-pwd').value='';
-      document.getElementById('login-pwd').focus();
-    }
-    return;
-  }
-
-  // Auth contra Apps Script
-  if(!user){ document.getElementById('login-err').textContent='Ingresá tu usuario.'; document.getElementById('login-err').style.display='block'; return; }
-  document.getElementById('login-loading').style.display='block';
-  document.getElementById('login-btn').disabled=true;
-  try{
-    const r=await fetch(`${scriptUrl}?action=login&u=${encodeURIComponent(user)}&p=${encodeURIComponent(pwd)}`,{redirect:'follow'});
-    const d=await r.json();
-    if(d.ok){
-      sessionStorage.setItem('arr_auth','1');
-      sessionStorage.setItem('arr_supervisor', JSON.stringify(d.supervisor));
-      app.supervisor=d.supervisor;
-      // Cargar la URL del supervisor si tiene una propia
-      if(d.supervisor.csvUrl) app.cfg.url=d.supervisor.csvUrl;
-      document.getElementById('login-page').style.display='none';
-      refreshNavSupervisor();
-      loadData();
-    } else {
-      document.getElementById('login-err').textContent=d.error||'Usuario o contraseña incorrectos.';
-      document.getElementById('login-err').style.display='block';
-      document.getElementById('login-pwd').value='';
-      document.getElementById('login-pwd').focus();
-    }
-  } catch(e){
-    document.getElementById('login-err').textContent='No se pudo conectar. Verificá tu conexión.';
+  if(pwd==='Arrivata123'){
+    sessionStorage.setItem('arr_auth','1');
+    document.getElementById('login-page').style.display='none';
+    refreshNavSupervisor();
+  } else {
     document.getElementById('login-err').style.display='block';
-  } finally {
-    document.getElementById('login-loading').style.display='none';
-    document.getElementById('login-btn').disabled=false;
+    document.getElementById('login-pwd').value='';
+    document.getElementById('login-pwd').focus();
   }
 }
 
@@ -1207,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Se sobreescribirá después de cargar cfg desde localStorage
     }
   } else {
-    setTimeout(()=>document.getElementById('login-user').focus(), 100);
+    setTimeout(()=>document.getElementById('login-pwd').focus(), 100);
   }
 
   const saved = localStorage.getItem('arrivata_v2');
