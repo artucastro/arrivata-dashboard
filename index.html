@@ -307,7 +307,8 @@
         </div>
         <div style="grid-column:1/-1">
           <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:4px;display:block">Ubicación</label>
-          <input id="vf-ubic" placeholder="Dirección..." style="width:100%">
+          <input id="vf-ubic" list="vf-ubic-list" placeholder="Dirección..." onchange="vfUbicChange()" style="width:100%">
+          <datalist id="vf-ubic-list"></datalist>
         </div>
         <div>
           <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:4px;display:block">Fecha</label>
@@ -3070,10 +3071,13 @@ function openCargarVisita(localName){
   VF_PHOTOS=[];
   renderVFPhotoPreviews();
 
-  // Datalist de locales existentes
+  // Datalist de locales y direcciones
   const dl=document.getElementById('vf-local-list');
   const existingLocals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))].sort();
   dl.innerHTML=existingLocals.map(l=>`<option value="${esc(l)}">`).join('');
+  const dlU=document.getElementById('vf-ubic-list');
+  const existingUbics=[...new Set(app.raw.map(r=>r['Ubicación']||r['Ubicacion']).filter(Boolean))].sort();
+  dlU.innerHTML=existingUbics.map(u=>`<option value="${esc(u)}">`).join('');
 
   // Pre-llenar nombre
   const nameInp=document.getElementById('vf-local');
@@ -3187,6 +3191,15 @@ function vfLocalChange(){
   if(!name) return;
   const row=app.raw.find(r=>r['Local']===name);
   if(row) document.getElementById('vf-ubic').value=row['Ubicación']||row['Ubicacion']||'';
+}
+
+function vfUbicChange(){
+  const ubic=document.getElementById('vf-ubic').value.trim();
+  if(!ubic) return;
+  const localInp=document.getElementById('vf-local');
+  if(localInp.value.trim()) return; // si ya tiene local, no pisar
+  const row=app.raw.find(r=>(r['Ubicación']||r['Ubicacion']||'')===ubic);
+  if(row) localInp.value=row['Local']||'';
 }
 
 const VF_DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
