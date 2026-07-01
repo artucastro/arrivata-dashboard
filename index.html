@@ -2380,7 +2380,7 @@ async function submitVisita(){
     (app.brandCols[brand]||[]).forEach(col=>{
       const state=VF[col];
       if(!state||state.sn===null){ productos[col]=''; return; }
-      if(state.sn==='no'){ productos[col]=0; return; }
+      if(state.sn==='no'){ productos[col]=''; return; }
       // SI: leer cantidad desde VF_QTY (capturado con oninput)
       const id=col.replace(/\W/g,'_');
       const rawQty=String(VF_QTY[id]||'').replace(/\D/g,'');
