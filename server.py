@@ -46,6 +46,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self._json(400, {'error': {'message': 'API key requerida'}})
                 return
 
+            # Forzar streaming para evitar timeouts en respuestas largas.
+            # El socket recibe datos continuamente; acumulamos y devolvemos JSON completo.
+            payload['stream'] = True
+
             req = urllib.request.Request(
                 ANTHROPIC_URL,
                 data=json.dumps(payload).encode('utf-8'),
@@ -57,9 +61,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 method='POST'
             )
 
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                result = json.loads(resp.read())
-            self._json(200, result)
+            full_text = ''
+            stop_reason = None
+
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                for raw_line in resp:
+                    line = raw_line.decode('utf-8').strip()
+                    if not line.startswith('data: '):
+                        continue
+                    data_str = line[6:]
+                    if data_str == '[DONE]':
+                        break
+                    try:
+                        evt = json.loads(data_str)
+                        etype = evt.get('type', '')
+                        if etype == 'content_block_delta':
+                            delta = evt.get('delta', {})
+                            if delta.get('type') == 'text_delta':
+                                full_text += delta.get('text', '')
+                        elif etype == 'message_delta':
+                            stop_reason = evt.get('delta', {}).get('stop_reason')
+                        elif etype == 'message_stop':
+                            break
+                        elif etype == 'error':
+                            self._json(500, {'error': evt.get('error', {'message': 'Error de API'})})
+                            return
+                    except json.JSONDecodeError:
+                        pass
+
+            self._json(200, {
+                'content': [{'type': 'text', 'text': full_text}],
+                'stop_reason': stop_reason,
+            })
 
         except urllib.error.HTTPError as e:
             try:
