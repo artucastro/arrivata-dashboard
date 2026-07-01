@@ -246,7 +246,7 @@
       </div>
       <div id="vf-products"></div>
       <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
-        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos de góndola <span style="font-weight:400">(opcional, máx 3)</span></label>
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos de góndola <span style="font-weight:400">(opcional, máx 5)</span></label>
         <input type="file" id="vf-fotos" accept="image/*" multiple onchange="addVFPhotos(this)" style="display:none">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <button type="button" id="vf-foto-btn" onclick="document.getElementById('vf-fotos').click()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px dashed var(--border);border-radius:8px;background:#FFFDF8;color:var(--muted);cursor:pointer;font-size:.8rem;font-weight:700">
@@ -2548,9 +2548,9 @@ function compressImage(file){
 }
 
 async function addVFPhotos(input){
-  const files=[...input.files].slice(0,3-VF_PHOTOS.length);
+  const files=[...input.files].slice(0,5-VF_PHOTOS.length);
   for(const file of files){
-    if(VF_PHOTOS.length>=3) break;
+    if(VF_PHOTOS.length>=5) break;
     const dataUrl=await compressImage(file);
     VF_PHOTOS.push({name:file.name,dataUrl});
   }
@@ -2567,7 +2567,7 @@ function renderVFPhotoPreviews(){
       <button onclick="removeVFPhoto(${i})" style="position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:none;cursor:pointer;font-size:.65rem;line-height:18px;text-align:center;padding:0">&#x2715;</button>
     </div>`).join('');
   const btn=document.getElementById('vf-foto-btn');
-  if(btn) btn.style.display=VF_PHOTOS.length>=3?'none':'flex';
+  if(btn) btn.style.display=VF_PHOTOS.length>=5?'none':'flex';
 }
 
 function removeVFPhoto(i){ VF_PHOTOS.splice(i,1); renderVFPhotoPreviews(); }
