@@ -246,6 +246,16 @@
       </div>
       <div id="vf-products"></div>
       <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos de góndola <span style="font-weight:400">(opcional, máx 3)</span></label>
+        <input type="file" id="vf-fotos" accept="image/*" multiple onchange="addVFPhotos(this)" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button type="button" id="vf-foto-btn" onclick="document.getElementById('vf-fotos').click()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px dashed var(--border);border-radius:8px;background:#FFFDF8;color:var(--muted);cursor:pointer;font-size:.8rem;font-weight:700">
+            &#128247; Agregar foto
+          </button>
+          <div id="vf-photo-previews" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
         <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:5px;display:block">Nota de visita <span style="font-weight:400">(opcional)</span></label>
         <textarea id="vf-nota" placeholder="Observaciones, descuentos, nombre del encargado, acuerdos..." style="width:100%;min-height:80px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:.83rem;font-family:inherit;color:var(--text);background:#FFFDF8;box-sizing:border-box"></textarea>
       </div>
@@ -271,6 +281,17 @@
       <button class="btn btn-blue" onclick="checkClave()" style="flex:1">Entrar</button>
       <button class="btn btn-ghost" onclick="document.getElementById('modal-clave').style.display='none'">Cancelar</button>
     </div>
+  </div>
+</div>
+
+<!-- ── MODAL: LIGHTBOX FOTOS ─────────────────────────────────── -->
+<div id="modal-foto" class="modal-backdrop" style="display:none;z-index:90;background:rgba(0,0,0,0.88)" onclick="closeFotoLightbox()">
+  <div style="position:relative;max-width:90vw;max-height:90vh" onclick="event.stopPropagation()">
+    <button onclick="closeFotoLightbox()" style="position:absolute;top:-38px;right:0;color:#fff;background:none;border:none;cursor:pointer;font-size:1.5rem;font-weight:700;line-height:1">&#x2715;</button>
+    <span id="lb-counter" style="position:absolute;top:-36px;left:0;color:rgba(255,255,255,.7);font-size:.8rem"></span>
+    <img id="modal-foto-img" src="" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:8px;display:block">
+    <button id="lb-prev" onclick="lightboxNav(-1)" style="position:absolute;left:-44px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:50%;width:36px;height:36px;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:1.1rem">&lt;</button>
+    <button id="lb-next" onclick="lightboxNav(1)" style="position:absolute;right:-44px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:50%;width:36px;height:36px;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:1.1rem">&gt;</button>
   </div>
 </div>
 
@@ -484,6 +505,18 @@
       </div>
     </div>
 
+    <!-- Panel Alertas de Quiebre -->
+    <div id="alertas-panel" class="card" style="margin-bottom:22px;padding:18px;display:none;border-left:4px solid #dc2626">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span style="font-size:1.1rem">&#9888;</span>
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-weight:700;color:#dc2626">Alertas de Quiebre</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Locales que bajaron de estado entre las últimas dos visitas</div>
+        </div>
+      </div>
+      <div id="alertas-grid"></div>
+    </div>
+
     <!-- Panel de Faltantes por Producto -->
     <div class="card" style="margin-bottom:22px;padding:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:6px">
@@ -683,6 +716,7 @@
         <div class="det-header-right" style="text-align:right">
           <div id="det-status-badge" style="margin-bottom:6px"></div>
           <div id="det-ultima-lbl" style="font-size:.75rem;color:var(--muted)"></div>
+          <div id="det-tendencia" style="font-size:.8rem;font-weight:700;margin-top:5px"></div>
         </div>
       </div>
     </div>
@@ -846,6 +880,7 @@ const app = {
   chartConfigs: [{datos:'marca',tipo:'bar'},{datos:'zona',tipo:'bar'}],
   _notas: {},
   _localData: {},
+  _fotos: {},
   detLocal: ''
 };
 
@@ -996,6 +1031,7 @@ function setPeriod(days){
   updateCharts(filtered);
   renderTable();
   renderFaltantes();
+  renderAlertas();
 }
 
 // ── Stats ────────────────────────────────────────────────────
@@ -1252,6 +1288,71 @@ function renderFaltantes(){
 }
 
 // ══════════════════════════════════════════════════════════════
+// ── ALERTAS DE QUIEBRE ───────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function getStatusForRow(row){
+  const arrCols=app.brandCols.ARRIVATA||[];
+  const total=arrCols.length;
+  if(!total) return null;
+  const present=arrCols.filter(c=>{ const v=String(row[c]||'').trim(); return v!==''&&v!=='0'; }).length;
+  if(present===total) return 'Completo';
+  if(present===0) return 'Quebrado';
+  return 'Parcial';
+}
+
+function calcAlertas(){
+  const rank={'Completo':2,'Parcial':1,'Quebrado':0};
+  const locals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))];
+  const alerts=[];
+  locals.forEach(local=>{
+    const visits=app.raw.filter(r=>r['Local']===local)
+      .map(r=>({row:r,d:parseDate(r['FECHA'])})).filter(v=>v.d)
+      .sort((a,b)=>a.d-b.d);
+    if(visits.length<2) return;
+    const currStatus=getStatusForRow(visits[visits.length-1].row);
+    const prevStatus=getStatusForRow(visits[visits.length-2].row);
+    if(!currStatus||!prevStatus) return;
+    if(rank[currStatus]<rank[prevStatus]){
+      alerts.push({local, prev:prevStatus, curr:currStatus,
+        delta:rank[prevStatus]-rank[currStatus],
+        fecha:visits[visits.length-1].row['FECHA']||''});
+    }
+  });
+  return alerts.sort((a,b)=>b.delta-a.delta);
+}
+
+function renderAlertas(){
+  const panel=document.getElementById('alertas-panel');
+  const grid=document.getElementById('alertas-grid');
+  if(!panel||!grid) return;
+  const data=calcAlertas();
+  if(!data.length){ panel.style.display='none'; return; }
+  panel.style.display='block';
+  const statusColor={'Completo':'#16a34a','Parcial':'#d97706','Quebrado':'#dc2626'};
+  grid.innerHTML=data.map(a=>{
+    const isQuiebre=a.curr==='Quebrado';
+    const bg=isQuiebre?'#fef2f2':'#fffbeb';
+    const icon=isQuiebre?'&#128308;':'&#128993;';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:${bg};border-radius:10px;margin-bottom:8px;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:.95rem">${icon}</span>
+        <div>
+          <div style="font-weight:700;font-size:.85rem;color:var(--text)">${esc(a.local)}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Última visita: ${esc(a.fecha)}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:.75rem;font-weight:700;color:${statusColor[a.prev]}">${a.prev}</span>
+        <span style="color:var(--muted)">&rarr;</span>
+        <span style="font-size:.75rem;font-weight:700;color:${statusColor[a.curr]}">${a.curr}</span>
+        <button onclick="openDetail('${esc(a.local)}')" style="margin-left:6px;font-size:.72rem;padding:3px 10px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--red);font-weight:700;cursor:pointer">Ver local</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
 // ── DETALLE DE LOCAL ─────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
@@ -1296,6 +1397,7 @@ function openDetail(localName, from='main'){
   window.scrollTo(0,0);
 
   renderLocalData(localName);
+  loadFotosLocal(localName);
 
   // Reset to "Todo" when opening a new local
   app.detPeriodDays=0;
@@ -1468,6 +1570,7 @@ function renderDetailTable(visits, arrCols){
     const localNombre=document.getElementById('det-name').textContent;
     const fechaVisita=v['FECHA']||'';
     const nota=getNota(localNombre, fechaVisita);
+    const fotos=(app._fotos[localNombre]||{})[fechaVisita]||[];
     return `<tr>
       <td style="white-space:nowrap;font-weight:700;color:#7B6A55">${esc(fechaVisita||'—')}</td>
       <td style="font-size:.78rem;color:#C5B49A">${esc(v['DIA']||'')}</td>
@@ -1475,6 +1578,8 @@ function renderDetailTable(visits, arrCols){
         <span class="${hasAny?'badge-si':'badge-no'}">${hasAny?'Presente':'Ausente'}</span>
         ${nota?`<button onclick="verNota('${esc(localNombre)}','${esc(fechaVisita)}')"
           style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;font-weight:700">Ver nota</button>`:''}
+        ${fotos.length?`<button onclick="verFotos('${esc(localNombre)}','${esc(fechaVisita)}')"
+          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:700">&#128247; ${fotos.length}</button>`:''}
       </td>
       ${cells}
     </tr>`;
@@ -2173,6 +2278,24 @@ function applyDetailCount(){
   renderDetailTable(visits, arrCols);
 }
 
+function calcTendencia(localName){
+  const arrCols=app.brandCols.ARRIVATA||[];
+  if(!arrCols.length) return null;
+  const visits=app.raw.filter(r=>r['Local']===localName)
+    .map(r=>({row:r,d:parseDate(r['FECHA'])})).filter(v=>v.d)
+    .sort((a,b)=>a.d-b.d);
+  if(visits.length<2) return null;
+  const pct=v=>arrCols.filter(c=>colPresent(v.row,c)).length/arrCols.length*100;
+  const recent=visits.slice(-3).map(pct);
+  const prior=visits.slice(-6,-3).map(pct);
+  const avgRecent=recent.reduce((a,b)=>a+b,0)/recent.length;
+  const avgPrior=prior.length ? prior.reduce((a,b)=>a+b,0)/prior.length : pct(visits[0]);
+  const diff=avgRecent-avgPrior;
+  if(diff>5) return {arrow:'&#8593;',color:'#16a34a',label:'Mejorando'};
+  if(diff<-5) return {arrow:'&#8595;',color:'#dc2626',label:'Bajando'};
+  return {arrow:'&#8594;',color:'#6b7280',label:'Estable'};
+}
+
 function updateDetailStats(visits, arrCols){
   if(visits.length>0){
     const last=visits[visits.length-1], first=visits[0];
@@ -2183,7 +2306,7 @@ function updateDetailStats(visits, arrCols){
     document.getElementById('det-ultima').textContent=last['FECHA']||'—';
     document.getElementById('det-prods-last').textContent=lastPresent.length+' / '+arrCols.length+' productos';
     document.getElementById('det-status-badge').innerHTML=
-      `<span class="${hasArr?'badge-si':'badge-no'}" style="font-size:.88rem;padding:4px 14px">${hasArr?'✓ Arrivata presente':'✗ Sin Arrivata'}</span>`;
+      `<span class="${hasArr?'badge-si':'badge-no'}" style="font-size:.88rem;padding:4px 14px">${hasArr?'&#10003; Arrivata presente':'&#10007; Sin Arrivata'}</span>`;
     document.getElementById('det-ultima-lbl').textContent='Última en período: '+last['FECHA'];
   } else {
     ['det-n-visitas','det-primera','det-ultima'].forEach(id=>document.getElementById(id).textContent='—');
@@ -2191,6 +2314,11 @@ function updateDetailStats(visits, arrCols){
     document.getElementById('det-status-badge').innerHTML='';
     document.getElementById('det-ultima-lbl').textContent='';
   }
+  const tend=calcTendencia(app.detLocal);
+  const tendEl=document.getElementById('det-tendencia');
+  if(tendEl) tendEl.innerHTML=tend
+    ? `<span style="color:${tend.color};font-size:1rem">${tend.arrow}</span> <span style="color:var(--muted);font-weight:400;font-size:.72rem">${tend.label}</span>`
+    : '';
 }
 
 // ── Página Locales ────────────────────────────────────────────
@@ -2396,6 +2524,95 @@ function verNota(local, fecha){
   document.getElementById('modal-nota').style.display='flex';
 }
 
+// ── Fotos de góndola ─────────────────────────────────────────────
+let VF_PHOTOS=[];
+
+function compressImage(file){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=1200;
+        let w=img.width,h=img.height;
+        if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+        const canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',0.75));
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addVFPhotos(input){
+  const files=[...input.files].slice(0,3-VF_PHOTOS.length);
+  for(const file of files){
+    if(VF_PHOTOS.length>=3) break;
+    const dataUrl=await compressImage(file);
+    VF_PHOTOS.push({name:file.name,dataUrl});
+  }
+  input.value='';
+  renderVFPhotoPreviews();
+}
+
+function renderVFPhotoPreviews(){
+  const c=document.getElementById('vf-photo-previews');
+  if(!c) return;
+  c.innerHTML=VF_PHOTOS.map((p,i)=>`
+    <div style="position:relative;display:inline-block">
+      <img src="${p.dataUrl}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:2px solid var(--border);cursor:pointer" onclick="openFotoLightbox('${p.dataUrl}')">
+      <button onclick="removeVFPhoto(${i})" style="position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:none;cursor:pointer;font-size:.65rem;line-height:18px;text-align:center;padding:0">&#x2715;</button>
+    </div>`).join('');
+  const btn=document.getElementById('vf-foto-btn');
+  if(btn) btn.style.display=VF_PHOTOS.length>=3?'none':'flex';
+}
+
+function removeVFPhoto(i){ VF_PHOTOS.splice(i,1); renderVFPhotoPreviews(); }
+
+function loadFotosLocal(localName){
+  if(!app.cfg.scriptUrl) return;
+  fetch(app.cfg.scriptUrl+'?action=getFotos&local='+encodeURIComponent(localName),{redirect:'follow'})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.ok){
+        app._fotos[localName]=d.fotos||{};
+        if(app.detLocal===localName) applyDetailPeriod(app.detPeriodDays);
+      }
+    }).catch(()=>{});
+}
+
+let _lbFotos=[],_lbIdx=0;
+
+function verFotos(local,fecha){
+  _lbFotos=(app._fotos[local]||{})[fecha]||[];
+  _lbIdx=0;
+  showLightboxPhoto();
+  document.getElementById('modal-foto').style.display='flex';
+}
+
+function openFotoLightbox(url){
+  _lbFotos=[url]; _lbIdx=0;
+  showLightboxPhoto();
+  document.getElementById('modal-foto').style.display='flex';
+}
+
+function showLightboxPhoto(){
+  document.getElementById('modal-foto-img').src=_lbFotos[_lbIdx]||'';
+  document.getElementById('lb-counter').textContent=_lbFotos.length>1?`${_lbIdx+1} / ${_lbFotos.length}`:'';
+  document.getElementById('lb-prev').style.display=_lbFotos.length>1&&_lbIdx>0?'flex':'none';
+  document.getElementById('lb-next').style.display=_lbFotos.length>1&&_lbIdx<_lbFotos.length-1?'flex':'none';
+}
+
+function lightboxNav(dir){
+  _lbIdx=Math.max(0,Math.min(_lbFotos.length-1,_lbIdx+dir));
+  showLightboxPhoto();
+}
+
+function closeFotoLightbox(){ document.getElementById('modal-foto').style.display='none'; }
+
 // ── Datos del local ──────────────────────────────────────────────
 function loadLocalData(){
   if(!app.cfg.scriptUrl) return;
@@ -2479,6 +2696,8 @@ const VF_BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', C
 function openCargarVisita(localName){
   Object.keys(VF).forEach(k=>delete VF[k]);
   Object.keys(VF_QTY).forEach(k=>delete VF_QTY[k]);
+  VF_PHOTOS=[];
+  renderVFPhotoPreviews();
 
   // Datalist de locales existentes
   const dl=document.getElementById('vf-local-list');
@@ -2660,10 +2879,18 @@ async function submitVisita(){
     app.raw.push(newRow);
     setPeriod(app.periodDays);
     renderFaltantes();
+    renderAlertas();
 
-    // Guardar nota en localStorage si hay texto
+    // Guardar nota si hay texto
     const notaTexto=document.getElementById('vf-nota').value;
     if(notaTexto.trim()) saveNota(local, fecha, notaTexto);
+
+    // Subir fotos a Drive vía Apps Script (fire & forget)
+    if(VF_PHOTOS.length>0&&scriptUrl){
+      const fotos=VF_PHOTOS.map(p=>p.dataUrl.replace(/^data:image\/\w+;base64,/,''));
+      fetch(scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({action:'savePhoto',local,fecha,fotos})}).catch(()=>{});
+    }
 
     btn.textContent='¡Guardado!'; btn.style.background='#16a34a';
     setTimeout(()=>closeCargarVisita(), 1200);

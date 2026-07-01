@@ -22,6 +22,22 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (e.parameter.action === 'getFotos') {
+    const local = e.parameter.local || '';
+    const prefix = 'foto|' + local + '|';
+    const all = PropertiesService.getScriptProperties().getProperties();
+    const fotos = {};
+    Object.keys(all).forEach(k => {
+      if (k.startsWith(prefix)) {
+        const fecha = k.slice(prefix.length);
+        try { fotos[fecha] = JSON.parse(all[k]); } catch(_) {}
+      }
+    });
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, fotos }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (e.parameter.action === 'getLocalData') {
     const all = PropertiesService.getScriptProperties().getProperties();
     const localData = {};
@@ -42,6 +58,29 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
+
+    // ── Guardar fotos en Drive ───────────────────────────────
+    if (data.action === 'savePhoto') {
+      const local = data.local || '';
+      const fecha = data.fecha || '';
+      const b64List = data.fotos || [];
+      const urls = b64List.map(function(b64, i) {
+        const clean = b64.replace(/^data:image\/\w+;base64,/, '');
+        const bytes = Utilities.base64Decode(clean);
+        const blob = Utilities.newBlob(bytes, 'image/jpeg',
+          'gondola_' + local + '_' + fecha.replace(/\//g,'-') + '_' + i + '.jpg');
+        const file = DriveApp.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+      });
+      const key = 'foto|' + local + '|' + fecha;
+      var existing = [];
+      try { existing = JSON.parse(PropertiesService.getScriptProperties().getProperty(key) || '[]'); } catch(_) {}
+      PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(existing.concat(urls)));
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     // ── Guardar datos del local ──────────────────────────────
     if (data.action === 'saveLocalData') {
