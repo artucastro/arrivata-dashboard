@@ -783,7 +783,8 @@ const app = {
   charts: {},
   detCharts: {},
   uploadedFiles: [],
-  chartConfigs: [{datos:'marca',tipo:'bar'},{datos:'zona',tipo:'bar'}]
+  chartConfigs: [{datos:'marca',tipo:'bar'},{datos:'zona',tipo:'bar'}],
+  _notas: {}
 };
 
 // ── Login ────────────────────────────────────────────────────
@@ -881,6 +882,7 @@ function processCSV(csv){
   document.getElementById('sync-label').textContent =
     'Actualizado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
   setLoading(false);
+  loadNotas();
 }
 
 function loadData(){
@@ -2298,16 +2300,29 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const VF = {};     // estado del formulario: colName -> { sn: null|'si'|'no' }
 const VF_QTY = {}; // id -> valor de cantidad (capturado con oninput)
 
-// ── Notas de visita (localStorage) ───────────────────────────
+// ── Notas de visita (Apps Script Properties — accesibles desde cualquier dispositivo) ──
 function notaKey(local, fecha){ return `${local}|${fecha}`; }
-function getNotas(){ try{ return JSON.parse(localStorage.getItem('arrivata_notas')||'{}'); }catch(e){ return {}; } }
+function getNota(local, fecha){ return app._notas[notaKey(local,fecha)]||''; }
+
 function saveNota(local, fecha, texto){
-  const notas=getNotas();
   const k=notaKey(local,fecha);
-  if(texto.trim()) notas[k]=texto.trim(); else delete notas[k];
-  localStorage.setItem('arrivata_notas',JSON.stringify(notas));
+  if(texto.trim()) app._notas[k]=texto.trim(); else delete app._notas[k];
+  if(!app.cfg.scriptUrl) return;
+  fetch(app.cfg.scriptUrl,{
+    method:'POST', mode:'no-cors',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify({action:'saveNota', local, fecha, texto})
+  }).catch(()=>{});
 }
-function getNota(local, fecha){ return getNotas()[notaKey(local,fecha)]||''; }
+
+function loadNotas(){
+  if(!app.cfg.scriptUrl) return;
+  fetch(app.cfg.scriptUrl+'?action=getNotas',{redirect:'follow'})
+    .then(r=>r.json())
+    .then(d=>{ if(d.ok) app._notas=d.notas||{}; })
+    .catch(()=>{});
+}
+
 function verNota(local, fecha){
   document.getElementById('modal-nota-titulo').textContent=local;
   document.getElementById('modal-nota-fecha').textContent=fecha;
