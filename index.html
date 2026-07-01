@@ -160,6 +160,19 @@
     .det-stats-grid { grid-template-columns:repeat(2,1fr) !important; }
     .main-pad { padding:10px !important; }
   }
+
+  @media print{
+    body > *:not(#print-report){ display:none !important; }
+    #print-report{ display:block !important; font-family:'Lato',sans-serif; color:#1a1a1a; }
+    #print-report h1{ font-family:'Playfair Display',serif; color:#8B1714; font-size:1.4rem; margin-bottom:4px; }
+    #print-report h2{ font-family:'Playfair Display',serif; color:#8B1714; font-size:1rem; margin:20px 0 8px; border-bottom:1.5px solid #e5d5c0; padding-bottom:4px; }
+    #print-report table{ width:100%; border-collapse:collapse; font-size:.82rem; margin-bottom:12px; }
+    #print-report th{ background:#f5ede0; text-align:left; padding:5px 8px; font-weight:700; }
+    #print-report td{ padding:4px 8px; border-bottom:1px solid #f0e8d8; }
+    #print-report .pr-badge{ display:inline-block; padding:1px 8px; border-radius:99px; font-weight:700; font-size:.75rem; }
+    @page{ margin:1.5cm; }
+  }
+  #print-report{ display:none; }
 </style>
 </head>
 <body>
@@ -284,6 +297,38 @@
   </div>
 </div>
 
+<!-- ── MODAL: EXPORTAR REPORTE ──────────────────────────────── -->
+<div id="modal-export" class="modal-backdrop" style="display:none;z-index:70">
+  <div class="modal" style="max-width:420px;width:94%;padding:0">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--red);font-size:1rem">Exportar reporte</div>
+        <div id="export-subtitle" style="font-size:.72rem;color:var(--muted);margin-top:1px"></div>
+      </div>
+      <button onclick="document.getElementById('modal-export').style.display='none'" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div style="padding:20px">
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Elegí el formato del reporte. Incluye presencia por zona, faltantes, locales sin visitar y alertas de quiebre.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button onclick="exportarExcel()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1.5px solid #16a34a;border-radius:10px;background:#f0fdf4;cursor:pointer;text-align:left;width:100%">
+          <span style="font-size:1.5rem">📊</span>
+          <div>
+            <div style="font-weight:700;color:#16a34a;font-size:.9rem">Excel (.xlsx)</div>
+            <div style="font-size:.73rem;color:var(--muted);margin-top:2px">Múltiples hojas · apto para compartir por WhatsApp</div>
+          </div>
+        </button>
+        <button onclick="exportarPDF()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1.5px solid #dc2626;border-radius:10px;background:#fef2f2;cursor:pointer;text-align:left;width:100%">
+          <span style="font-size:1.5rem">📄</span>
+          <div>
+            <div style="font-weight:700;color:#dc2626;font-size:.9rem">PDF (imprimir / guardar)</div>
+            <div style="font-size:.73rem;color:var(--muted);margin-top:2px">Vista de impresión del navegador</div>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL: LIGHTBOX FOTOS ─────────────────────────────────── -->
 <div id="modal-foto" class="modal-backdrop" style="display:none;z-index:90;background:rgba(0,0,0,0.88)" onclick="closeFotoLightbox()">
   <div style="position:relative;max-width:90vw;max-height:90vh" onclick="event.stopPropagation()">
@@ -368,6 +413,14 @@
       <button class="btn btn-ghost" onclick="openLocales()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <span class="nav-btn-lbl">Locales</span>
+      </button>
+      <button class="btn btn-ghost" onclick="openAgenda()" style="padding:6px 10px;font-size:.8rem">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="nav-btn-lbl">Agenda</span>
+      </button>
+      <button class="btn btn-ghost" onclick="exportarReporte()" style="padding:6px 10px;font-size:.8rem">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="nav-btn-lbl">Exportar</span>
       </button>
       <button class="btn" onclick="abrirConClave(null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -786,6 +839,42 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- ── AGENDA DE VISITAS ─────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="agenda-view" style="display:none;background:var(--cream);min-height:100vh">
+  <div class="main-pad" style="max-width:1400px;margin:0 auto;padding:24px">
+
+    <!-- Topbar -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="closeAgenda()" style="font-size:.85rem;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Dashboard
+      </button>
+      <div>
+        <span style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--red)">Agenda de Visitas</span>
+        <span style="font-size:.75rem;color:var(--muted);margin-left:6px">Locales pendientes de visitar</span>
+      </div>
+    </div>
+
+    <!-- Filtro de días -->
+    <div class="card" style="padding:16px 20px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:.8rem;font-weight:700;color:var(--muted)">Sin visitar hace más de:</span>
+        <button class="btn btn-ghost agenda-day-btn active-period" data-days="7"  onclick="setAgendaDays(7)"  style="padding:5px 14px;font-size:.8rem">7 días</button>
+        <button class="btn btn-ghost agenda-day-btn"               data-days="14" onclick="setAgendaDays(14)" style="padding:5px 14px;font-size:.8rem">14 días</button>
+        <button class="btn btn-ghost agenda-day-btn"               data-days="30" onclick="setAgendaDays(30)" style="padding:5px 14px;font-size:.8rem">30 días</button>
+        <button class="btn btn-ghost agenda-day-btn"               data-days="0"  onclick="setAgendaDays(0)"  style="padding:5px 14px;font-size:.8rem">Todos</button>
+        <span id="agenda-resumen" style="font-size:.75rem;color:var(--muted);margin-left:auto;font-weight:700"></span>
+      </div>
+    </div>
+
+    <!-- Lista -->
+    <div id="agenda-grid"></div>
+
+  </div>
+</div>
+
 <!-- ── PÁGINA LOCALES ────────────────────────────────────────── -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div id="locales-view" style="display:none;background:var(--cream);min-height:100vh">
@@ -881,7 +970,8 @@ const app = {
   _notas: {},
   _localData: {},
   _fotos: {},
-  detLocal: ''
+  detLocal: '',
+  agendaDays: 7
 };
 
 // ── Login ────────────────────────────────────────────────────
@@ -1388,7 +1478,8 @@ function openDetail(localName, from='main'){
 
   // Update back button text
   const backBtn = document.getElementById('det-back-btn');
-  if (backBtn) backBtn.childNodes[backBtn.childNodes.length-1].textContent = from==='locales' ? ' Volver a Locales' : ' Volver al dashboard';
+  if (backBtn) backBtn.childNodes[backBtn.childNodes.length-1].textContent =
+    from==='locales' ? ' Volver a Locales' : from==='agenda' ? ' Volver a Agenda' : ' Volver al dashboard';
 
   // Hide all views, show detail
   document.getElementById('main-view').style.display='none';
@@ -1449,6 +1540,8 @@ function closeDetail(){
   document.getElementById('detail-view').style.display='none';
   if(app._detFrom==='locales'){
     document.getElementById('locales-view').style.display='block';
+  } else if(app._detFrom==='agenda'){
+    document.getElementById('agenda-view').style.display='block';
   } else {
     document.getElementById('main-view').style.display='block';
   }
@@ -2375,6 +2468,7 @@ function openLocales(){
   sel.value=cur;
 
   document.getElementById('main-view').style.display='none';
+  document.getElementById('agenda-view').style.display='none';
   document.getElementById('locales-view').style.display='block';
   window.scrollTo(0,0);
   renderLocalesGrid();
@@ -2899,6 +2993,260 @@ async function submitVisita(){
     alert('No se pudo guardar. Verificá tu conexión e intentá de nuevo.');
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// ── AGENDA DE VISITAS ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function openAgenda(){
+  document.getElementById('main-view').style.display='none';
+  document.getElementById('locales-view').style.display='none';
+  document.getElementById('detail-view').style.display='none';
+  document.getElementById('agenda-view').style.display='block';
+  window.scrollTo(0,0);
+  renderAgenda();
+}
+
+function closeAgenda(){
+  document.getElementById('agenda-view').style.display='none';
+  document.getElementById('main-view').style.display='block';
+  window.scrollTo(0,0);
+}
+
+function setAgendaDays(days){
+  app.agendaDays=days;
+  document.querySelectorAll('.agenda-day-btn').forEach(b=>{
+    b.classList.toggle('active-period', parseInt(b.dataset.days)===days);
+  });
+  renderAgenda();
+}
+
+function calcAgendaLocales(){
+  const now=Date.now();
+  const days=app.agendaDays||7;
+  const cutoffMs=days>0 ? days*864e5 : Infinity;
+
+  const locals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))];
+  return locals.map(local=>{
+    const visits=app.raw.filter(r=>r['Local']===local)
+      .map(r=>({row:r,d:parseDate(r['FECHA'])})).filter(v=>v.d)
+      .sort((a,b)=>a.d-b.d);
+    const lastVisit=visits.length ? visits[visits.length-1] : null;
+    const daysSince=lastVisit ? Math.floor((now-lastVisit.d)/864e5) : 9999;
+    const status=lastVisit ? getStatusForRow(lastVisit.row) : 'Sin datos';
+    const zona=visits.length ? (visits[0].row._zona||'—') : '—';
+    const ubic=lastVisit ? (lastVisit.row['Ubicación']||lastVisit.row['Ubicacion']||'') : '';
+    return { local, daysSince, lastFecha: lastVisit?lastVisit.row['FECHA']:'Sin visitas', status, zona, ubic };
+  })
+  .filter(r=> days===0 ? true : r.daysSince>=days)
+  .sort((a,b)=>{
+    // Primero por urgencia de status, luego por días sin visitar
+    const urgencia={'Quebrado':0,'Parcial':1,'Completo':2,'Sin datos':3};
+    const ua=urgencia[a.status]??3, ub=urgencia[b.status]??3;
+    if(ua!==ub) return ua-ub;
+    return b.daysSince-a.daysSince;
+  });
+}
+
+function renderAgenda(){
+  const grid=document.getElementById('agenda-grid');
+  const resumen=document.getElementById('agenda-resumen');
+  if(!grid) return;
+  const data=calcAgendaLocales();
+  resumen.textContent=data.length
+    ? `${data.length} local${data.length!==1?'es':''} pendiente${data.length!==1?'s':''}`
+    : 'Todos los locales están al día';
+  if(!data.length){
+    grid.innerHTML=`<div class="card" style="padding:40px;text-align:center;color:var(--muted)">
+      <div style="font-size:2.5rem;margin-bottom:12px">&#10003;</div>
+      <div style="font-weight:700;font-size:.95rem">¡Todos los locales visitados!</div>
+      <div style="font-size:.8rem;margin-top:4px">No hay locales pendientes para el filtro seleccionado.</div>
+    </div>`;
+    return;
+  }
+  const statusColor={'Completo':'#16a34a','Parcial':'#d97706','Quebrado':'#dc2626','Sin datos':'#6b7280'};
+  const statusBg={'Completo':'#f0fdf4','Parcial':'#fffbeb','Quebrado':'#fef2f2','Sin datos':'#f1f5f9'};
+  const urgencyTag=(days)=>{
+    if(days>=30) return {txt:`${days}d`,bg:'#fef2f2',c:'#dc2626'};
+    if(days>=14) return {txt:`${days}d`,bg:'#fffbeb',c:'#d97706'};
+    if(days>=7)  return {txt:`${days}d`,bg:'#fefce8',c:'#ca8a04'};
+    return {txt:`${days}d`,bg:'#f0fdf4',c:'#16a34a'};
+  };
+  grid.innerHTML=data.map(r=>{
+    const tag=r.daysSince===9999?{txt:'Sin visitas',bg:'#fef2f2',c:'#dc2626'}:urgencyTag(r.daysSince);
+    const sc=statusColor[r.status]||'#6b7280';
+    const sb=statusBg[r.status]||'#f1f5f9';
+    return `<div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0">
+        <div style="text-align:center;min-width:56px;padding:6px 10px;background:${tag.bg};border-radius:10px;flex-shrink:0">
+          <div style="font-size:1rem;font-weight:900;color:${tag.c};line-height:1">${tag.txt}</div>
+          <div style="font-size:.6rem;color:${tag.c};margin-top:1px">${r.daysSince===9999?'':' sin visitar'}</div>
+        </div>
+        <div style="min-width:0">
+          <div style="font-weight:700;font-size:.92rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.local)}</div>
+          <div style="font-size:.74rem;color:var(--muted);margin-top:2px">${esc(r.zona)}${r.ubic?' &middot; '+esc(r.ubic.split('\\').pop()):''}
+            &middot; Última: ${esc(r.lastFecha)}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <span style="font-size:.74rem;font-weight:700;color:${sc};background:${sb};padding:3px 10px;border-radius:20px">${r.status}</span>
+        <button onclick="openDetail('${esc(r.local)}','agenda')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text);font-weight:700;cursor:pointer">Ver</button>
+        <button onclick="abrirConClave('${esc(r.local)}')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer">Visitar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── EXPORTAR REPORTE ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function exportarReporte(){
+  const sub=document.getElementById('export-subtitle');
+  if(sub){
+    const days=app.periodDays;
+    sub.textContent=days===0?'Período completo':`Últimos ${days} días`;
+  }
+  document.getElementById('modal-export').style.display='flex';
+}
+
+function exportarExcel(){
+  document.getElementById('modal-export').style.display='none';
+  const wb=XLSX.utils.book_new();
+  const period=app.periodDays===0?'Todo':`Últimos ${app.periodDays} días`;
+  const now=new Date().toLocaleDateString('es-AR');
+
+  // ── Hoja 1: Resumen ──────────────────────────────────────────
+  const filtered=app._periodData;
+  const locals=[...new Set(filtered.map(r=>r['Local']).filter(Boolean))];
+  const arrCols=app.brandCols.ARRIVATA||[];
+  const presentes=filtered.filter(r=>arrCols.some(c=>colPresent(r,c)));
+  const wsResumen=XLSX.utils.aoa_to_sheet([
+    ['Arrivata — Reporte de Presencia en Góndola'],
+    ['Generado:', now, 'Período:', period],
+    [],
+    ['Métrica','Valor'],
+    ['Total de visitas', filtered.length],
+    ['Locales visitados', locals.length],
+    ['Visitas con Arrivata presente', presentes.length],
+    ['Presencia Arrivata (%)', filtered.length?Math.round(presentes.length/filtered.length*100)+'%':'—'],
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+  // ── Hoja 2: Presencia por Zona ───────────────────────────────
+  const zonas={};
+  filtered.forEach(r=>{
+    const z=r._zona||'Sin zona';
+    if(!zonas[z]) zonas[z]={total:0,presentes:0};
+    zonas[z].total++;
+    if(arrCols.some(c=>colPresent(r,c))) zonas[z].presentes++;
+  });
+  const wsZonas=XLSX.utils.aoa_to_sheet([
+    ['Zona','Total visitas','Con Arrivata','Presencia %'],
+    ...Object.entries(zonas).sort((a,b)=>b[1].presentes/b[1].total-a[1].presentes/a[1].total)
+      .map(([z,v])=>[z,v.total,v.presentes,Math.round(v.presentes/v.total*100)+'%'])
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsZonas, 'Por Zona');
+
+  // ── Hoja 3: Faltantes por Producto ──────────────────────────
+  const faltData=calcFaltantesPorProducto();
+  const wsFalt=XLSX.utils.aoa_to_sheet([
+    ['Producto','Cobertura %','Presentes','Total locales','Falta en'],
+    ...faltData.map(d=>[d.producto, d.cobertura+'%', d.presentes, d.totalLocales, d.faltantes.join(', ')])
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsFalt, 'Faltantes');
+
+  // ── Hoja 4: Agenda (locales sin visitar) ────────────────────
+  const agendaBackup=app.agendaDays;
+  app.agendaDays=14;
+  const agendaData=calcAgendaLocales();
+  app.agendaDays=agendaBackup;
+  const wsAgenda=XLSX.utils.aoa_to_sheet([
+    ['Local','Zona','Días sin visitar','Última visita','Estado portafolio'],
+    ...agendaData.map(r=>[r.local, r.zona, r.daysSince===9999?'Sin visitas':r.daysSince, r.lastFecha, r.status])
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsAgenda, 'Pendientes +14d');
+
+  // ── Hoja 5: Alertas de quiebre ──────────────────────────────
+  const alertas=calcAlertas();
+  const wsAlertas=XLSX.utils.aoa_to_sheet([
+    ['Local','Estado anterior','Estado actual','Última visita'],
+    ...alertas.map(a=>[a.local, a.prev, a.curr, a.fecha])
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsAlertas, 'Alertas');
+
+  XLSX.writeFile(wb, `Arrivata_Reporte_${now.replace(/\//g,'-')}.xlsx`);
+}
+
+function exportarPDF(){
+  document.getElementById('modal-export').style.display='none';
+  const period=app.periodDays===0?'Todo el período':`Últimos ${app.periodDays} días`;
+  const now=new Date().toLocaleDateString('es-AR');
+  const filtered=app._periodData||[];
+  const arrCols=app.brandCols.ARRIVATA||[];
+  const presentes=filtered.filter(r=>arrCols.some(c=>colPresent(r,c)));
+  const locals=[...new Set(filtered.map(r=>r['Local']).filter(Boolean))];
+
+  // Zonas
+  const zonas={};
+  filtered.forEach(r=>{
+    const z=r._zona||'Sin zona';
+    if(!zonas[z]) zonas[z]={total:0,pres:0};
+    zonas[z].total++;
+    if(arrCols.some(c=>colPresent(r,c))) zonas[z].pres++;
+  });
+  const zonasRows=Object.entries(zonas).sort((a,b)=>b[1].pres/b[1].total-a[1].pres/a[1].total)
+    .map(([z,v])=>`<tr><td>${esc(z)}</td><td>${v.total}</td><td>${v.pres}</td><td>${Math.round(v.pres/v.total*100)}%</td></tr>`).join('');
+
+  // Faltantes
+  const faltData=calcFaltantesPorProducto();
+  const faltRows=faltData.map(d=>{
+    const clr=d.cobertura>=80?'#16a34a':d.cobertura>=50?'#d97706':'#dc2626';
+    return `<tr><td>${esc(d.producto)}</td><td style="color:${clr};font-weight:700">${d.cobertura}%</td><td>${d.presentes}/${d.totalLocales}</td></tr>`;
+  }).join('');
+
+  // Alertas
+  const alertas=calcAlertas();
+  const alertRows=alertas.length
+    ? alertas.map(a=>`<tr><td>${esc(a.local)}</td><td>${a.prev}</td><td style="color:#dc2626;font-weight:700">${a.curr}</td><td>${esc(a.fecha)}</td></tr>`).join('')
+    : '<tr><td colspan="4" style="color:#6b7280">Sin alertas activas</td></tr>';
+
+  // Agenda
+  const agBackup=app.agendaDays; app.agendaDays=14;
+  const agData=calcAgendaLocales(); app.agendaDays=agBackup;
+  const agRows=agData.slice(0,20).map(r=>`<tr><td>${esc(r.local)}</td><td>${esc(r.zona)}</td><td>${r.daysSince===9999?'Sin visitas':r.daysSince+'d'}</td><td>${esc(r.lastFecha)}</td><td>${r.status}</td></tr>`).join('');
+
+  document.getElementById('print-report').innerHTML=`
+    <h1>Arrivata — Reporte de Presencia en Góndola</h1>
+    <p style="font-size:.8rem;color:#6b7280;margin-bottom:4px">Generado: ${now} &nbsp;|&nbsp; Período: ${period}</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0">
+      <div style="border:1px solid #e5d5c0;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:1.4rem;font-weight:900;color:#8B1714">${filtered.length}</div>
+        <div style="font-size:.75rem;color:#6b7280">Visitas</div>
+      </div>
+      <div style="border:1px solid #e5d5c0;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:1.4rem;font-weight:900;color:#8B1714">${locals.length}</div>
+        <div style="font-size:.75rem;color:#6b7280">Locales</div>
+      </div>
+      <div style="border:1px solid #e5d5c0;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:1.4rem;font-weight:900;color:#8B1714">${filtered.length?Math.round(presentes.length/filtered.length*100):0}%</div>
+        <div style="font-size:.75rem;color:#6b7280">Presencia Arrivata</div>
+      </div>
+    </div>
+    <h2>Presencia por Zona</h2>
+    <table><thead><tr><th>Zona</th><th>Visitas</th><th>Con Arrivata</th><th>%</th></tr></thead><tbody>${zonasRows}</tbody></table>
+    <h2>Faltantes por Producto (Arrivata)</h2>
+    <table><thead><tr><th>Producto</th><th>Cobertura</th><th>Locales</th></tr></thead><tbody>${faltRows}</tbody></table>
+    <h2>Alertas de Quiebre</h2>
+    <table><thead><tr><th>Local</th><th>Estado anterior</th><th>Estado actual</th><th>Última visita</th></tr></thead><tbody>${alertRows}</tbody></table>
+    <h2>Locales pendientes de visitar (+14 días)</h2>
+    <table><thead><tr><th>Local</th><th>Zona</th><th>Sin visitar</th><th>Última visita</th><th>Estado</th></tr></thead><tbody>${agRows||'<tr><td colspan="5" style="color:#6b7280">Sin pendientes</td></tr>'}</tbody></table>
+  `;
+  setTimeout(()=>{ window.print(); },100);
+}
 </script>
+
+<!-- Div oculto solo para impresión PDF -->
+<div id="print-report"></div>
 </body>
 </html>
