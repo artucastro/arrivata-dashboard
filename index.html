@@ -245,11 +245,31 @@
         </div>
       </div>
       <div id="vf-products"></div>
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:5px;display:block">Nota de visita <span style="font-weight:400">(opcional)</span></label>
+        <textarea id="vf-nota" placeholder="Observaciones, descuentos, nombre del encargado, acuerdos..." style="width:100%;min-height:80px;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:.83rem;font-family:inherit;color:var(--text);background:#FFFDF8;box-sizing:border-box"></textarea>
+      </div>
     </div>
     <!-- Footer -->
     <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0">
       <button id="vf-submit-btn" onclick="submitVisita()" class="btn btn-blue" style="flex:1;padding:10px;font-size:.88rem">Guardar Visita</button>
       <button class="btn btn-ghost" onclick="closeCargarVisita()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: VER NOTA ───────────────────────────────────────── -->
+<div id="modal-nota" class="modal-backdrop" style="display:none;z-index:70">
+  <div class="modal" style="max-width:420px;width:94%;padding:0">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div id="modal-nota-titulo" style="font-family:'Playfair Display',serif;font-weight:700;color:var(--red);font-size:1rem"></div>
+        <div id="modal-nota-fecha" style="font-size:.72rem;color:var(--muted);margin-top:1px"></div>
+      </div>
+      <button onclick="document.getElementById('modal-nota').style.display='none'" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div style="padding:18px 20px">
+      <div id="modal-nota-texto" style="font-size:.88rem;color:var(--text);line-height:1.65;white-space:pre-wrap;background:var(--cream);border-radius:8px;padding:14px 16px;min-height:60px"></div>
     </div>
   </div>
 </div>
@@ -1377,10 +1397,17 @@ function renderDetailTable(visits, arrCols){
       const raw=String(v[c]||'').trim();
       return `<td style="text-align:center;font-weight:${q>0?'700':'400'};color:${q>0?'#8B1714':'#C5B49A'}">${q>0?esc(raw):'—'}</td>`;
     }).join('');
+    const localNombre=document.getElementById('det-name').textContent;
+    const fechaVisita=v['FECHA']||'';
+    const nota=getNota(localNombre, fechaVisita);
     return `<tr>
-      <td style="white-space:nowrap;font-weight:700;color:#7B6A55">${esc(v['FECHA']||'—')}</td>
+      <td style="white-space:nowrap;font-weight:700;color:#7B6A55">${esc(fechaVisita||'—')}</td>
       <td style="font-size:.78rem;color:#C5B49A">${esc(v['DIA']||'')}</td>
-      <td><span class="${hasAny?'badge-si':'badge-no'}">${hasAny?'Presente':'Ausente'}</span></td>
+      <td style="white-space:nowrap">
+        <span class="${hasAny?'badge-si':'badge-no'}">${hasAny?'Presente':'Ausente'}</span>
+        ${nota?`<button onclick="verNota('${esc(localNombre)}','${esc(fechaVisita)}')"
+          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;font-weight:700">Ver nota</button>`:''}
+      </td>
       ${cells}
     </tr>`;
   }).join('');
@@ -2271,6 +2298,23 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const VF = {};     // estado del formulario: colName -> { sn: null|'si'|'no' }
 const VF_QTY = {}; // id -> valor de cantidad (capturado con oninput)
 
+// ── Notas de visita (localStorage) ───────────────────────────
+function notaKey(local, fecha){ return `${local}|${fecha}`; }
+function getNotas(){ try{ return JSON.parse(localStorage.getItem('arrivata_notas')||'{}'); }catch(e){ return {}; } }
+function saveNota(local, fecha, texto){
+  const notas=getNotas();
+  const k=notaKey(local,fecha);
+  if(texto.trim()) notas[k]=texto.trim(); else delete notas[k];
+  localStorage.setItem('arrivata_notas',JSON.stringify(notas));
+}
+function getNota(local, fecha){ return getNotas()[notaKey(local,fecha)]||''; }
+function verNota(local, fecha){
+  document.getElementById('modal-nota-titulo').textContent=local;
+  document.getElementById('modal-nota-fecha').textContent=fecha;
+  document.getElementById('modal-nota-texto').textContent=getNota(local,fecha);
+  document.getElementById('modal-nota').style.display='flex';
+}
+
 const VF_BRAND_LABELS = { ARRIVATA:'Arrivata', FESTA:'Festa', WAPI:'WAPI', CUISINE:'Cuisine', CARREFOUR:'Carrefour' };
 const VF_BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUISINE:'#A07830', CARREFOUR:'#0d9488' };
 
@@ -2299,6 +2343,7 @@ function openCargarVisita(localName){
 
   // Fecha default hoy
   document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('vf-nota').value='';
 
   // Reset botón
   const btn=document.getElementById('vf-submit-btn');
@@ -2433,6 +2478,10 @@ async function submitVisita(){
     app.raw.push(newRow);
     setPeriod(app.periodDays);
     renderFaltantes();
+
+    // Guardar nota en localStorage si hay texto
+    const notaTexto=document.getElementById('vf-nota').value;
+    if(notaTexto.trim()) saveNota(local, fecha, notaTexto);
 
     btn.textContent='¡Guardado!'; btn.style.background='#16a34a';
     setTimeout(()=>closeCargarVisita(), 1200);
