@@ -807,6 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inp-hasta').value=toISO(_today);
   document.getElementById('inp-desde').value=toISO(new Date(_today.getFullYear(),_today.getMonth(),_today.getDate()-30));
   loadData();
+  setInterval(loadData, 5*60*1000); // auto-sync cada 5 minutos
 
   // Delegate click for local-link buttons inside main table
   document.getElementById('tbl-body').addEventListener('click', e => {
