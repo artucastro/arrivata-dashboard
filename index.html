@@ -203,10 +203,53 @@
         <input id="inp-key" type="password" placeholder="sk-ant-...">
         <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Solo para reportes con IA · console.anthropic.com</p>
       </div>
+      <div>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:6px">URL Google Apps Script</label>
+        <input id="inp-script" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        <p style="font-size:.72rem;color:var(--muted);margin-top:5px">Para guardar visitas desde el dashboard</p>
+      </div>
       <div style="display:flex;gap:10px;padding-top:4px">
         <button class="btn btn-blue" onclick="saveAndLoad()" style="flex:1">Guardar y cargar datos</button>
         <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: CARGAR VISITA ──────────────────────────────────── -->
+<div id="modal-visita" class="modal-backdrop" style="display:none;z-index:60">
+  <div class="modal" style="max-width:520px;width:96%;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:1.05rem;color:var(--red)">Cargar Visita</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:1px">Registrá los productos vistos en góndola</div>
+      </div>
+      <button onclick="closeCargarVisita()" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <!-- Body scrollable -->
+    <div style="overflow-y:auto;flex:1;padding:16px 20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div style="grid-column:1/-1">
+          <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:4px;display:block">Local</label>
+          <input id="vf-local" list="vf-local-list" placeholder="Nombre del local..." style="width:100%">
+          <datalist id="vf-local-list"></datalist>
+        </div>
+        <div style="grid-column:1/-1">
+          <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:4px;display:block">Ubicación</label>
+          <input id="vf-ubic" placeholder="Dirección..." style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:4px;display:block">Fecha</label>
+          <input id="vf-fecha" type="date" style="width:100%">
+        </div>
+      </div>
+      <div id="vf-products"></div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0">
+      <button id="vf-submit-btn" onclick="submitVisita()" class="btn btn-blue" style="flex:1;padding:10px;font-size:.88rem">Guardar Visita</button>
+      <button class="btn btn-ghost" onclick="closeCargarVisita()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -233,6 +276,10 @@
       <button class="btn btn-ghost" onclick="openLocales()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <span class="nav-btn-lbl">Locales</span>
+      </button>
+      <button class="btn" onclick="openCargarVisita(null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="nav-btn-lbl">Nueva Visita</span>
       </button>
       <button class="btn btn-blue" onclick="openModal()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -531,6 +578,11 @@
       </button>
       <select id="det-selector" class="det-selector" onchange="openDetail(this.value)" style="width:auto;min-width:240px;font-weight:500;flex:1;max-width:400px">
       </select>
+      <button class="btn" onclick="openCargarVisita(document.getElementById('det-name').textContent)"
+        style="background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:7px 14px;font-size:.82rem;font-weight:700;display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Cargar Visita
+      </button>
     </div>
 
     <!-- Period filter (detail) -->
@@ -696,7 +748,7 @@ const PROD_COLORS = [
 
 // ── State ────────────────────────────────────────────────────
 const app = {
-  cfg: { url: DEFAULT_URL, key: '' },
+  cfg: { url: DEFAULT_URL, key: '', scriptUrl: '' },
   raw: [],
   brandCols: { ARRIVATA:[], FESTA:[], WAPI:[], CUISINE:[], CARREFOUR:[] },
   periodDays: 7,
@@ -770,11 +822,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Modal ────────────────────────────────────────────────────
-function openModal(){ document.getElementById('inp-url').value=app.cfg.url; document.getElementById('inp-key').value=app.cfg.key||''; document.getElementById('modal').style.display='flex'; }
+function openModal(){ document.getElementById('inp-url').value=app.cfg.url; document.getElementById('inp-key').value=app.cfg.key||''; document.getElementById('inp-script').value=app.cfg.scriptUrl||''; document.getElementById('modal').style.display='flex'; }
 function closeModal(){ document.getElementById('modal').style.display='none'; }
 function saveAndLoad(){
   app.cfg.url = document.getElementById('inp-url').value.trim() || DEFAULT_URL;
   app.cfg.key = document.getElementById('inp-key').value.trim();
+  app.cfg.scriptUrl = document.getElementById('inp-script').value.trim();
   localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
   const noKeyEl=document.getElementById('no-key-warn');
   if(noKeyEl) noKeyEl.style.display='none';
@@ -2208,6 +2261,151 @@ function fmtDate(d){ return d?d.toLocaleDateString('es-AR',{day:'numeric',month:
 function setLoading(on){ document.getElementById('lbar').style.display=on?'block':'none'; }
 function showError(msg){ document.getElementById('empty').style.display='block'; document.getElementById('dash').style.display='none'; document.getElementById('empty-error').style.display='block'; document.getElementById('empty-error-msg').textContent=msg; }
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ══════════════════════════════════════════════════════════════
+// ── CARGAR VISITA ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+const VF = {}; // estado del formulario: colName -> { sn: null|'si'|'no', qty: '' }
+
+const VF_BRAND_LABELS = { ARRIVATA:'Arrivata', FESTA:'Festa', WAPI:'WAPI', CUISINE:'Cuisine', CARREFOUR:'Carrefour' };
+const VF_BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUISINE:'#A07830', CARREFOUR:'#0d9488' };
+
+function openCargarVisita(localName){
+  Object.keys(VF).forEach(k=>delete VF[k]);
+
+  // Datalist de locales existentes
+  const dl=document.getElementById('vf-local-list');
+  const existingLocals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))].sort();
+  dl.innerHTML=existingLocals.map(l=>`<option value="${esc(l)}">`).join('');
+
+  // Pre-llenar nombre
+  const nameInp=document.getElementById('vf-local');
+  nameInp.value=localName||'';
+
+  // Pre-llenar dirección si el local ya existe
+  const ubicInp=document.getElementById('vf-ubic');
+  if(localName){
+    const row=app.raw.find(r=>r['Local']===localName);
+    ubicInp.value=row?(row['Ubicación']||row['Ubicacion']||''):'';
+  } else {
+    ubicInp.value='';
+    setTimeout(()=>nameInp.focus(),100);
+  }
+
+  // Fecha default hoy
+  document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
+
+  // Reset botón
+  const btn=document.getElementById('vf-submit-btn');
+  btn.textContent='Guardar Visita'; btn.disabled=false; btn.style.background='';
+
+  renderVFProducts();
+  document.getElementById('modal-visita').style.display='flex';
+}
+
+function closeCargarVisita(){
+  document.getElementById('modal-visita').style.display='none';
+}
+
+function renderVFProducts(){
+  const brands=Object.entries(app.brandCols).filter(([,cols])=>cols.length>0);
+  if(!brands.length){
+    document.getElementById('vf-products').innerHTML='<div style="color:var(--muted);font-size:.85rem;padding:12px 0">Actualizá los datos para ver los productos.</div>';
+    return;
+  }
+
+  document.getElementById('vf-products').innerHTML=brands.map(([brand,cols])=>`
+    <div style="margin-bottom:20px">
+      <div style="font-family:\'Playfair Display\',serif;font-weight:700;font-size:.88rem;color:${VF_BRAND_COLORS[brand]||'#1C1208'};padding:7px 0 6px;border-bottom:2px solid ${VF_BRAND_COLORS[brand]||'#E5D9C4'}22;margin-bottom:2px;letter-spacing:.02em">
+        ${VF_BRAND_LABELS[brand]||brand}
+      </div>
+      ${cols.map(col=>{
+        VF[col]={sn:null,qty:''};
+        const id=col.replace(/\W/g,'_');
+        return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #F0E8D4">
+          <span style="flex:1;font-size:.83rem;color:var(--text);min-width:0">${esc(colLabel(col))}</span>
+          <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','si')" id="vf-si-${id}"
+            style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">SI</button>
+          <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','no')" id="vf-no-${id}"
+            style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">NO</button>
+          <input type="number" id="vf-qty-${id}" min="0" max="9999" placeholder="cant."
+            style="width:60px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:.82rem;display:none">
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+}
+
+function setProductSN(col, val){
+  if(!VF[col]) VF[col]={sn:null,qty:''};
+  VF[col].sn = VF[col].sn===val ? null : val; // click mismo = deseleccionar
+
+  const id=col.replace(/\W/g,'_');
+  const siBtn=document.getElementById(`vf-si-${id}`);
+  const noBtn=document.getElementById(`vf-no-${id}`);
+  const qtyInp=document.getElementById(`vf-qty-${id}`);
+  if(!siBtn||!noBtn) return;
+
+  siBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #D1C5B0;background:#fff;color:#A09078';
+  noBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #D1C5B0;background:#fff;color:#A09078';
+  qtyInp.style.display='none';
+
+  if(VF[col].sn==='si'){
+    siBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #16a34a;background:#f0fdf4;color:#16a34a';
+    qtyInp.style.display='inline-block'; qtyInp.focus();
+  } else if(VF[col].sn==='no'){
+    noBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #dc2626;background:#fef2f2;color:#dc2626';
+  }
+}
+
+async function submitVisita(){
+  const local=document.getElementById('vf-local').value.trim();
+  const ubic=document.getElementById('vf-ubic').value.trim();
+  const fechaVal=document.getElementById('vf-fecha').value;
+
+  if(!local){ alert('Ingresá el nombre del local.'); return; }
+  if(!fechaVal){ alert('Ingresá la fecha.'); return; }
+
+  // YYYY-MM-DD → DD/MM/YYYY
+  const [y,mo,d]=fechaVal.split('-');
+  const fecha=`${d}/${mo}/${y}`;
+
+  // Armar objeto de productos: colName -> cantidad (vacío si no marcado, 0 si NO, N si SI)
+  const productos={};
+  Object.keys(app.brandCols).forEach(brand=>{
+    (app.brandCols[brand]||[]).forEach(col=>{
+      const state=VF[col];
+      if(!state||state.sn===null){ productos[col]=''; return; }
+      if(state.sn==='no'){ productos[col]=0; return; }
+      const id=col.replace(/\W/g,'_');
+      const qtyEl=document.getElementById(`vf-qty-${id}`);
+      productos[col]=qtyEl&&qtyEl.value!==''?parseInt(qtyEl.value)||1:1;
+    });
+  });
+
+  const scriptUrl=app.cfg.scriptUrl;
+  if(!scriptUrl){
+    alert('Configurá la URL del Apps Script en el botón Configurar primero.');
+    return;
+  }
+
+  const btn=document.getElementById('vf-submit-btn');
+  btn.textContent='Guardando…'; btn.disabled=true;
+
+  try {
+    await fetch(scriptUrl,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({fecha, local, ubicacion:ubic, productos})
+    });
+    btn.textContent='¡Guardado!'; btn.style.background='#16a34a';
+    setTimeout(()=>{ closeCargarVisita(); loadData(); },1800);
+  } catch(e){
+    btn.textContent='Error — Reintentar'; btn.disabled=false;
+    alert('No se pudo guardar. Verificá tu conexión e intentá de nuevo.');
+  }
+}
 </script>
 </body>
 </html>
