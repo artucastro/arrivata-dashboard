@@ -75,6 +75,60 @@ function doGet(e) {
     return _ok({ ok: true, fotos });
   }
 
+  // ── Visitas (lectura en vivo, sin caché de "Publicar en la web") ──
+  // Sin "sheet" combina TODAS las hojas del spreadsheet en un solo CSV.
+  // Con "sheet=NombreDeHoja" devuelve solo esa hoja.
+  if (action === 'getVisitas') {
+    const sheetName = e.parameter.sheet || '';
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = sheetName
+      ? [ss.getSheetByName(sheetName)].filter(function(s) { return !!s; })
+      : ss.getSheets();
+
+    let canonHeaders = null;
+    const dataRows = [];
+
+    sheets.forEach(function(sh) {
+      const values = sh.getDataRange().getValues();
+      const hIdx = values.findIndex(function(r) {
+        return String(r[0]).trim().toUpperCase() === 'FECHA';
+      });
+      if (hIdx === -1) return;
+      const headers = values[hIdx].map(function(h) { return String(h).trim(); });
+      if (!canonHeaders) {
+        canonHeaders = headers.slice();
+      } else {
+        headers.forEach(function(h) {
+          if (h && canonHeaders.indexOf(h) === -1) canonHeaders.push(h);
+        });
+      }
+      values.slice(hIdx + 1).forEach(function(r) {
+        if (String(r[0]).trim() === '') return;
+        const map = {};
+        headers.forEach(function(h, i) { map[h] = r[i]; });
+        dataRows.push(map);
+      });
+    });
+
+    if (!canonHeaders) canonHeaders = ['FECHA'];
+
+    const fmtCell = function(v) {
+      if (v instanceof Date) {
+        return Utilities.formatDate(v, ss.getSpreadsheetTimeZone(), 'dd/MM/yyyy');
+      }
+      let s = (v === null || v === undefined) ? '' : String(v);
+      if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+
+    const lines = [canonHeaders.map(fmtCell).join(',')];
+    dataRows.forEach(function(map) {
+      lines.push(canonHeaders.map(function(h) { return fmtCell(map[h]); }).join(','));
+    });
+
+    return ContentService.createTextOutput(lines.join('\n')).setMimeType(ContentService.MimeType.CSV);
+  }
+
   // ── Datos de locales ──────────────────────────────────────
   if (action === 'getLocalData') {
     const all = PropertiesService.getScriptProperties().getProperties();

@@ -221,11 +221,6 @@
         <div style="font-weight:700;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Conexión de datos</div>
         <div style="display:flex;flex-direction:column;gap:14px">
           <div>
-            <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:5px">URL de Google Sheets (CSV)</label>
-            <input id="inp-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv">
-            <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Archivo → Compartir → Publicar en la web → CSV</p>
-          </div>
-          <div>
             <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:5px">URL Google Apps Script</label>
             <input id="inp-script" type="url" placeholder="https://script.google.com/macros/s/.../exec">
             <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Para guardar visitas, notas y fotos desde el dashboard</p>
@@ -263,11 +258,7 @@
             <div style="grid-column:1/-1">
               <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Nombre de la hoja en el Spreadsheet</label>
               <input id="ns-sheet" type="text" placeholder="ej. Supervisión Juan" style="width:100%;box-sizing:border-box">
-            </div>
-            <div style="grid-column:1/-1">
-              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">URL CSV de esa hoja</label>
-              <input id="ns-csv" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=XXXX&output=csv" style="width:100%;box-sizing:border-box">
-              <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Archivo → Compartir → Publicar en la web → seleccionar la hoja → CSV</div>
+              <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Tiene que coincidir exactamente con el nombre de la pestaña en el Google Sheet</div>
             </div>
           </div>
           <div style="display:flex;gap:10px">
@@ -1011,7 +1002,6 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSOqs1_WaTUPxjglZqkpWQFfoHtNtJhIvMr3sATF2_B8m2XmKFZa4Kx4mhoE9lqcg/pub?output=csv';
 const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxgzaYvOFWqFkJeXXExmUdTdzPwvIXlRSVT6TgKCwOAd9UAAJGD7QuN_AKArpxBADYwaA/exec';
 
 const BRAND_SUFFIXES = {
@@ -1031,7 +1021,7 @@ const PROD_COLORS = [
 
 // ── State ────────────────────────────────────────────────────
 const app = {
-  cfg: { url: DEFAULT_URL, key: '', scriptUrl: DEFAULT_SCRIPT_URL },
+  cfg: { key: '', scriptUrl: DEFAULT_SCRIPT_URL, sheetName: '' },
   raw: [],
   brandCols: { ARRIVATA:[], FESTA:[], WAPI:[], CUISINE:[], CARREFOUR:[] },
   periodDays: 7,
@@ -1140,13 +1130,12 @@ async function crearSupervisor(){
   const pwd=document.getElementById('ns-pwd').value.trim();
   const zona=document.getElementById('ns-zona').value.trim();
   const sheet=document.getElementById('ns-sheet').value.trim();
-  const csv=document.getElementById('ns-csv').value.trim();
   const msg=document.getElementById('admin-msg');
   if(!nombre||!user||!pwd){ msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Completá nombre, usuario y contraseña.'; return; }
   if(!app.cfg.scriptUrl){ msg.textContent='Falta URL del Apps Script.'; msg.style.display='block'; return; }
   try{
     await fetch(app.cfg.scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({action:'createSupervisor',nombre,username:user,password:pwd,zona,sheetName:sheet,csvUrl:csv,isAdmin:false})});
+      body:JSON.stringify({action:'createSupervisor',nombre,username:user,password:pwd,zona,sheetName:sheet,isAdmin:false})});
     msg.style.color='#16a34a'; msg.textContent='¡Supervisor creado!'; msg.style.display='block';
     limpiarFormSupervisor();
     setTimeout(()=>cargarListaSupervisores(),800);
@@ -1163,7 +1152,7 @@ async function eliminarSupervisor(username){
 }
 
 function limpiarFormSupervisor(){
-  ['ns-nombre','ns-user','ns-pwd','ns-zona','ns-sheet','ns-csv'].forEach(id=>document.getElementById(id).value='');
+  ['ns-nombre','ns-user','ns-pwd','ns-zona','ns-sheet'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('admin-msg').style.display='none';
 }
 
@@ -1176,10 +1165,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const supStr=sessionStorage.getItem('arr_supervisor');
     if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
     refreshNavSupervisor();
-    // Si el supervisor tiene su propia URL, usarla
-    if(app.supervisor&&app.supervisor.csvUrl){
-      // Se sobreescribirá después de cargar cfg desde localStorage
-    }
   } else {
     setTimeout(()=>document.getElementById('login-pwd').focus(), 100);
   }
@@ -1187,18 +1172,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('arrivata_v2');
   if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
   if (!app.cfg.scriptUrl) app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
-  // Migración: forzar la URL del spreadsheet y del Apps Script vigentes en
-  // todos los dispositivos una vez, así se resincronizan solos aunque tengan
-  // guardado un valor viejo en su localStorage.
-  const SYNC_MARK = DEFAULT_URL + '|' + DEFAULT_SCRIPT_URL;
-  if (localStorage.getItem('arrivata_defaults_sync') !== SYNC_MARK) {
-    app.cfg.url = DEFAULT_URL;
+  // Migración: forzar el Apps Script vigente en todos los dispositivos una vez,
+  // así se resincronizan solos aunque tengan guardado un valor viejo en su localStorage.
+  if (localStorage.getItem('arrivata_defaults_sync') !== DEFAULT_SCRIPT_URL) {
     app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
     localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
-    localStorage.setItem('arrivata_defaults_sync', SYNC_MARK);
+    localStorage.setItem('arrivata_defaults_sync', DEFAULT_SCRIPT_URL);
   }
-  // Si el supervisor tiene CSV propio, toma prioridad sobre el cfg guardado
-  if(app.supervisor&&app.supervisor.csvUrl) app.cfg.url=app.supervisor.csvUrl;
+  // Si el supervisor tiene hoja propia, toma prioridad sobre el cfg guardado
+  if(app.supervisor&&app.supervisor.sheetName) app.cfg.sheetName=app.supervisor.sheetName;
   const savedCharts = localStorage.getItem('arrivata_charts');
   if(savedCharts) try { app.chartConfigs=JSON.parse(savedCharts); } catch(e){}
   // Sync selectors with saved config
@@ -1208,7 +1190,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if(sd) sd.value=cc.datos;
     if(st) st.value=cc.tipo;
   });
-  document.getElementById('inp-url').value = app.cfg.url;
   document.getElementById('inp-key').value = app.cfg.key || '';
   // Default custom range: last 30 days → today
   const toISO=d=>d.toISOString().slice(0,10);
@@ -1242,7 +1223,6 @@ function openModal(){
   }
 }
 function abrirConfigModal(sup){
-  document.getElementById('inp-url').value=app.cfg.url||'';
   document.getElementById('inp-key').value=app.cfg.key||'';
   document.getElementById('inp-script').value=app.cfg.scriptUrl||'';
   actualizarCfgPerfil(sup||app.supervisor);
@@ -1250,7 +1230,6 @@ function abrirConfigModal(sup){
 }
 function closeModal(){ document.getElementById('modal').style.display='none'; }
 function saveAndLoad(){
-  app.cfg.url = document.getElementById('inp-url').value.trim() || DEFAULT_URL;
   app.cfg.key = document.getElementById('inp-key').value.trim();
   app.cfg.scriptUrl = document.getElementById('inp-script').value.trim() || DEFAULT_SCRIPT_URL;
   localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
@@ -1289,18 +1268,28 @@ function processCSV(csv){
   loadLocalData();
 }
 
+function visitasUrl(sheetName){
+  return app.cfg.scriptUrl + '?action=getVisitas' +
+    (sheetName ? '&sheet=' + encodeURIComponent(sheetName) : '') +
+    '&_t=' + Date.now();
+}
+
 function loadData(){
   setLoading(true);
   document.getElementById('empty-error').style.display='none';
-  const freshUrl = app.cfg.url + (app.cfg.url.includes('?')?'&':'?') + '_t=' + Date.now();
-  fetch(freshUrl, { mode:'cors', credentials:'omit', cache:'no-store' })
+  if(!app.cfg.scriptUrl){
+    showError('Falta configurar la URL del Apps Script (botón Configurar).');
+    setLoading(false);
+    return Promise.resolve();
+  }
+  return fetch(visitasUrl(app.cfg.sheetName), { mode:'cors', credentials:'omit', cache:'no-store' })
     .then(r => {
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
     })
     .then(csv => processCSV(csv))
     .catch(err => {
-      showError('No se pudo cargar el Google Sheet.\n\nVerificá que la URL esté publicada como CSV y tenés conexión a internet.\n\n(' + (err.message||'error de red') + ')');
+      showError('No se pudo cargar los datos desde el Apps Script.\n\nVerificá la URL configurada y tu conexión a internet.\n\n(' + (err.message||'error de red') + ')');
       setLoading(false);
     });
 }
@@ -1319,7 +1308,7 @@ function populateZonaSwitcher(){
   const sel=document.getElementById('zona-select');
   const sw=document.getElementById('zona-switcher');
   if(!sel||!sw) return;
-  const sups=(app.allSupervisors||[]).filter(s=>s.csvUrl);
+  const sups=(app.allSupervisors||[]).filter(s=>s.sheetName);
   const myUser=(app.supervisor&&app.supervisor.username)||'';
   sel.innerHTML='<option value="own">Mi zona</option>';
   sups.forEach(s=>{
@@ -1338,53 +1327,21 @@ function populateZonaSwitcher(){
 async function cargarZona(value){
   app.viewZone=value;
   if(value==='own'){
-    const ownUrl=(app.supervisor&&app.supervisor.csvUrl)||'';
-    if(ownUrl) app.cfg.url=ownUrl;
+    app.cfg.sheetName=(app.supervisor&&app.supervisor.sheetName)||'';
     loadData();
   } else if(value==='all'){
     loadAllZones();
   } else {
     const sup=(app.allSupervisors||[]).find(s=>s.username===value);
-    if(sup&&sup.csvUrl){ app.cfg.url=sup.csvUrl; loadData(); }
+    if(sup){ app.cfg.sheetName=sup.sheetName||''; loadData(); }
   }
 }
 
 async function loadAllZones(){
-  setLoading(true);
-  const sups=(app.allSupervisors||[]).filter(s=>s.csvUrl);
-  if(!sups.length){ showError('No hay supervisores con datos configurados.'); setLoading(false); return; }
-
-  const results=await Promise.all(sups.map(s=>
-    fetch(s.csvUrl+(s.csvUrl.includes('?')?'&':'?')+'_t='+Date.now(),{mode:'cors',credentials:'omit',cache:'no-store'})
-      .then(r=>r.text()).then(csv=>({csv,sup:s})).catch(()=>null)
-  ));
-
-  let headers=null, allRows=[];
-  results.forEach(res=>{
-    if(!res) return;
-    const rows=Papa.parse(res.csv,{header:false}).data;
-    const hIdx=rows.findIndex(r=>String(r[0]||'').trim().toUpperCase()==='FECHA');
-    if(hIdx===-1) return;
-    if(!headers){ headers=rows[hIdx].map(h=>String(h||'').trim()); app.brandCols=detectBrands(headers); }
-    rows.slice(hIdx+1).filter(r=>String(r[0]||'').trim().length>0).forEach(r=>{
-      const obj={};
-      headers.forEach((h,i)=>{ obj[h]=String(r[i]||'').trim(); });
-      obj._zona=extractZona(obj['Ubicación']||obj['Ubicacion']||'');
-      obj._supervisor=res.sup.name;
-      allRows.push(obj);
-    });
-  });
-
-  if(!headers){ showError('No se pudo cargar ninguna zona.'); setLoading(false); return; }
-  app.raw=allRows;
-  populateZonaFilter();
-  setPeriod(app.periodDays,false);
-  document.getElementById('empty').style.display='none';
-  document.getElementById('dash').style.display='block';
+  app.viewZone='all';
+  app.cfg.sheetName='';
+  await loadData();
   document.getElementById('sync-label').textContent='Todas las zonas · '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-  setLoading(false);
-  loadNotas();
-  loadLocalData();
 }
 
 function detectBrands(headers){
@@ -3188,7 +3145,7 @@ function ejecutarOpPendiente(supervisor){
   // Actualizar perfil del supervisor activo
   app.supervisor=supervisor;
   sessionStorage.setItem('arr_supervisor',JSON.stringify(supervisor));
-  if(supervisor.csvUrl) app.cfg.url=supervisor.csvUrl;
+  if(supervisor.sheetName) app.cfg.sheetName=supervisor.sheetName;
   refreshNavSupervisor();
   if(action==='config'||action==='identificar'){
     abrirConfigModal(supervisor);
