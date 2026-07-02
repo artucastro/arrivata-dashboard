@@ -3081,8 +3081,16 @@ function closeCargarVisita(){
 // ── Verificación de identidad por supervisor ──────────────────
 let _pendingVerOp=null;
 let _currentOpSupervisor=null;
+let _verifiedAt=0;
+const VERIFY_TTL_MS=30*60*1000; // sesión verificada: 30 min de inactividad, o hasta recargar
 
 function abrirVerificacion(action, context){
+  // Si ya se verificó hace menos de VERIFY_TTL_MS, no volver a pedir usuario/contraseña
+  if(app.supervisor && (Date.now()-_verifiedAt)<VERIFY_TTL_MS){
+    _pendingVerOp={action, context};
+    ejecutarOpPendiente(app.supervisor);
+    return;
+  }
   _pendingVerOp={action, context};
   const ver=document.getElementById('modal-verificar');
   document.getElementById('ver-user').value=(app.supervisor&&app.supervisor.username)||'';
@@ -3142,6 +3150,7 @@ function ejecutarOpPendiente(supervisor){
   const {action,context}=_pendingVerOp;
   _pendingVerOp=null;
   _currentOpSupervisor=supervisor;
+  _verifiedAt=Date.now();
   // Actualizar perfil del supervisor activo
   app.supervisor=supervisor;
   sessionStorage.setItem('arr_supervisor',JSON.stringify(supervisor));
