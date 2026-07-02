@@ -459,6 +459,10 @@
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:6px">
+      <button id="nav-login-btn" class="btn btn-ghost" onclick="iniciarSesion()" style="padding:6px 10px;font-size:.8rem;margin-right:4px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        <span class="nav-btn-lbl">Iniciar sesión</span>
+      </button>
       <div id="nav-supervisor" style="display:none;align-items:center;gap:8px;margin-right:4px">
         <div style="text-align:right">
           <div id="nav-sup-nombre" style="font-size:.78rem;font-weight:700;color:var(--text);line-height:1.2"></div>
@@ -1060,10 +1064,20 @@ function checkLogin(){
   }
 }
 
+function iniciarSesion(){
+  abrirVerificacion('login', null);
+}
+
 function refreshNavSupervisor(){
   const sup=app.supervisor;
   const el=document.getElementById('nav-supervisor');
-  if(!sup||!sup.name){ if(el) el.style.display='none'; return; }
+  const loginBtn=document.getElementById('nav-login-btn');
+  if(!sup||!sup.name){
+    if(el) el.style.display='none';
+    if(loginBtn) loginBtn.style.display='flex';
+    return;
+  }
+  if(loginBtn) loginBtn.style.display='none';
   if(el) el.style.display='flex';
   document.getElementById('nav-sup-nombre').textContent=sup.name;
   document.getElementById('nav-sup-zona').textContent=sup.zona||'';
