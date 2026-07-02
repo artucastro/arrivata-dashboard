@@ -1219,6 +1219,89 @@ function limpiarFormSupervisor(){
 // 'change'), solo queda oculto y se usa como storage.
 function initCustomSelects(){
   document.querySelectorAll('select').forEach(enhanceSelect);
+  document.querySelectorAll('input[list]').forEach(enhanceAutocomplete);
+}
+
+// Igual que enhanceSelect, pero para <input list="..."> + <datalist>: el
+// popup de sugerencias nativo tampoco respeta el CSS del sitio (peor que el
+// <select>, ni el tamaño de letra se puede tocar). El <datalist> original
+// sigue siendo la fuente de las opciones (se puede seguir repoblando con
+// innerHTML como hasta ahora), solo se lee al filtrar.
+function enhanceAutocomplete(input){
+  if(input.dataset.acDone) return;
+  input.dataset.acDone='1';
+
+  const listId=input.getAttribute('list');
+  const datalist=listId?document.getElementById(listId):null;
+  input.removeAttribute('list');
+
+  const wrap=document.createElement('div');
+  wrap.className='csel-wrap';
+  wrap.style.display='block';
+  const inlineStyle=input.getAttribute('style');
+  if(inlineStyle) wrap.setAttribute('style', inlineStyle+';display:block');
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+  input.style.width='100%';
+
+  const list=document.createElement('div');
+  list.className='csel-list';
+  wrap.appendChild(list);
+
+  let activeIdx=-1;
+
+  function getOptions(){
+    if(!datalist) return [];
+    return Array.from(datalist.querySelectorAll('option')).map(o=>o.value).filter(Boolean);
+  }
+
+  function buildList(){
+    const q=input.value.trim().toLowerCase();
+    const opts=getOptions().filter(v=>!q||v.toLowerCase().includes(q)).slice(0,50);
+    activeIdx=-1;
+    list.innerHTML='';
+    if(!opts.length){ closeList(); return; }
+    opts.forEach(v=>{
+      const item=document.createElement('div');
+      item.className='csel-option';
+      item.textContent=v;
+      item.onmousedown=(e)=>{
+        e.preventDefault();
+        input.value=v;
+        input.dispatchEvent(new Event('change',{bubbles:true}));
+        closeList();
+      };
+      list.appendChild(item);
+    });
+    list.classList.add('csel-open');
+    document.addEventListener('mousedown', onDocClick);
+  }
+  function closeList(){
+    list.classList.remove('csel-open');
+    document.removeEventListener('mousedown', onDocClick);
+  }
+  function onDocClick(e){ if(!wrap.contains(e.target)) closeList(); }
+  function highlight(idx){
+    const items=list.querySelectorAll('.csel-option');
+    items.forEach((it,i)=>it.classList.toggle('csel-option-active', i===idx));
+    if(items[idx]) items[idx].scrollIntoView({block:'nearest'});
+  }
+
+  input.addEventListener('input', buildList);
+  input.addEventListener('focus', buildList);
+  input.addEventListener('keydown', (e)=>{
+    const items=list.querySelectorAll('.csel-option');
+    if(e.key==='Escape'){ closeList(); return; }
+    if(!items.length) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); activeIdx=(activeIdx+1)%items.length; highlight(activeIdx); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); activeIdx=(activeIdx-1+items.length)%items.length; highlight(activeIdx); }
+    else if(e.key==='Enter'&&activeIdx>=0){
+      e.preventDefault();
+      input.value=items[activeIdx].textContent;
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+      closeList();
+    }
+  });
 }
 
 function enhanceSelect(sel){
