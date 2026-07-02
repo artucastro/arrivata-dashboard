@@ -1424,9 +1424,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auth check
   if(sessionStorage.getItem('arr_auth')==='1'){
     document.getElementById('login-page').style.display='none';
-    // Restaurar perfil del supervisor
+    // Restaurar perfil del supervisor y la sesión verificada (sobrevive a
+    // un F5 mientras no pasen los 30 min; sessionStorage se borra solo al
+    // cerrar la pestaña/navegador)
     const supStr=sessionStorage.getItem('arr_supervisor');
     if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
+    const verAt=parseInt(sessionStorage.getItem('arr_verified_at')||'0',10);
+    if(!isNaN(verAt)) _verifiedAt=verAt;
     refreshNavSupervisor();
   } else {
     setTimeout(()=>document.getElementById('login-pwd').focus(), 100);
@@ -3374,7 +3378,7 @@ function closeCargarVisita(){
 let _pendingVerOp=null;
 let _currentOpSupervisor=null;
 let _verifiedAt=0;
-const VERIFY_TTL_MS=30*60*1000; // sesión verificada: 30 min de inactividad, o hasta recargar
+const VERIFY_TTL_MS=30*60*1000; // sesión verificada: 30 min de inactividad (sobrevive a recargar la página, se guarda en sessionStorage)
 
 function abrirVerificacion(action, context){
   // Si ya se verificó hace menos de VERIFY_TTL_MS, no volver a pedir usuario/contraseña
@@ -3443,6 +3447,7 @@ function ejecutarOpPendiente(supervisor){
   _pendingVerOp=null;
   _currentOpSupervisor=supervisor;
   _verifiedAt=Date.now();
+  sessionStorage.setItem('arr_verified_at', String(_verifiedAt));
   // Actualizar perfil del supervisor activo
   app.supervisor=supervisor;
   sessionStorage.setItem('arr_supervisor',JSON.stringify(supervisor));
