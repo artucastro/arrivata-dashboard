@@ -881,14 +881,27 @@
     <div class="det-charts-grid" style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">
       <!-- Line: evolution -->
       <div class="card" style="padding:18px">
-        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Evolución de productos Arrivata</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:2px;flex-wrap:wrap">
+          <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Evolución de productos Arrivata</div>
+          <select id="det-line-tipo" onchange="changeDetChartType('line')" style="font-size:.68rem;border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:var(--text);background:#FFFDF8;cursor:pointer;font-family:inherit">
+            <option value="line" selected>Línea</option>
+            <option value="bar">Barras</option>
+          </select>
+        </div>
         <div style="font-size:.7rem;color:var(--muted);margin-bottom:14px">Unidades en góndola por visita (todos los datos históricos)</div>
         <div id="det-line-msg" style="display:none;padding:40px;text-align:center;color:var(--muted);font-size:.85rem"></div>
         <div id="det-line-wrap" style="position:relative;height:300px"><canvas id="det-chart-line"></canvas></div>
       </div>
       <!-- Bar: last visit -->
       <div class="card" style="padding:18px">
-        <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:2px">Última visita — por producto</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:2px;flex-wrap:wrap">
+          <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Última visita — por producto</div>
+          <select id="det-bar-tipo" onchange="changeDetChartType('bar')" style="font-size:.68rem;border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:var(--text);background:#FFFDF8;cursor:pointer;font-family:inherit">
+            <option value="bar" selected>Columnas</option>
+            <option value="horizontal">Horizontal</option>
+            <option value="donut">Donut</option>
+          </select>
+        </div>
         <div id="det-bar-fecha" style="font-size:.7rem;color:var(--muted);margin-bottom:14px"></div>
         <div id="det-bar-msg" style="display:none;padding:40px;text-align:center;color:var(--muted);font-size:.85rem">Sin datos Arrivata registrados</div>
         <div id="det-bar-wrap" style="position:relative;height:300px"><canvas id="det-chart-bar"></canvas></div>
@@ -1039,6 +1052,7 @@ const app = {
   _detFrom: 'main',
   charts: {},
   detCharts: {},
+  detChartTypes: { line:'line', bar:'bar' },
   uploadedFiles: [],
   chartConfigs: [{datos:'marca',tipo:'bar'},{datos:'zona',tipo:'bar'}],
   _notas: {},
@@ -1797,11 +1811,11 @@ function applyDetailPeriod(days){
   const arrCols=app.brandCols.ARRIVATA;
   updateDetailStats(visits, arrCols);
 
-  const activeCols=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0));
   const lastVisit=visits[visits.length-1]||{};
+  app._detCurrentVisits=visits; app._detCurrentArrCols=arrCols; app._detCurrentLastVisit=lastVisit;
 
-  renderDetailLine(visits, activeCols);
-  renderDetailBar(lastVisit, activeCols, arrCols);
+  renderDetailLine(visits, arrCols);
+  renderDetailBar(lastVisit, arrCols);
   renderDetailTable(visits, arrCols);
 }
 
@@ -1816,7 +1830,14 @@ function closeDetail(){
   }
 }
 
-function renderDetailLine(visits, activeCols){
+function changeDetChartType(which){
+  const sel=document.getElementById('det-'+which+'-tipo');
+  app.detChartTypes[which]=sel.value;
+  if(which==='line') renderDetailLine(app._detCurrentVisits||[], app._detCurrentArrCols||[]);
+  else renderDetailBar(app._detCurrentLastVisit||{}, app._detCurrentArrCols||[]);
+}
+
+function renderDetailLine(visits, arrCols){
   const lineWrap=document.getElementById('det-line-wrap');
   const lineMsg=document.getElementById('det-line-msg');
   if(app.detCharts.line){ app.detCharts.line.destroy(); app.detCharts.line=null; }
@@ -1826,9 +1847,9 @@ function renderDetailLine(visits, activeCols){
     lineMsg.textContent='Sin visitas en el período seleccionado.';
     return;
   }
-  if(activeCols.length===0){
+  if(arrCols.length===0){
     lineWrap.style.display='none'; lineMsg.style.display='block';
-    lineMsg.textContent='No se registraron productos Arrivata en este período.';
+    lineMsg.textContent='No hay columnas de productos Arrivata detectadas.';
     return;
   }
   if(visits.length<2){
@@ -1838,17 +1859,18 @@ function renderDetailLine(visits, activeCols){
   }
   lineWrap.style.display='block'; lineMsg.style.display='none';
 
+  const type=app.detChartTypes.line;
   const labels=visits.map(v=>v['FECHA']);
-  const datasets=activeCols.map((col,i)=>({
+  const datasets=arrCols.map((col,i)=>({
     label: colLabel(col),
     data: visits.map(v=>parseQty(v[col])),
     borderColor: PROD_COLORS[i%PROD_COLORS.length],
-    backgroundColor: PROD_COLORS[i%PROD_COLORS.length]+'20',
-    tension:.35, fill:false, pointRadius:4, pointHoverRadius:7, borderWidth:2
+    backgroundColor: PROD_COLORS[i%PROD_COLORS.length]+(type==='bar'?'CC':'20'),
+    tension:.35, fill:false, pointRadius: type==='bar'?0:4, pointHoverRadius:7, borderWidth:2
   }));
 
   app.detCharts.line=new Chart(document.getElementById('det-chart-line'),{
-    type:'line',
+    type: type==='bar'?'bar':'line',
     data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -1864,39 +1886,58 @@ function renderDetailLine(visits, activeCols){
   });
 }
 
-function renderDetailBar(lastVisit, activeCols, allArrCols){
+function renderDetailBar(lastVisit, arrCols){
   const barWrap=document.getElementById('det-bar-wrap');
   const barMsg=document.getElementById('det-bar-msg');
   if(app.detCharts.bar){ app.detCharts.bar.destroy(); app.detCharts.bar=null; }
 
   document.getElementById('det-bar-fecha').textContent=lastVisit['FECHA']?'Visita del '+lastVisit['FECHA']:'';
 
-  if(!lastVisit['FECHA']||activeCols.length===0){
+  if(!lastVisit['FECHA']||arrCols.length===0){
     barWrap.style.display='none'; barMsg.style.display='block';
-    barMsg.textContent=!lastVisit['FECHA']?'Sin visitas en el período seleccionado.':'Sin datos Arrivata registrados.';
+    barMsg.textContent=!lastVisit['FECHA']?'Sin visitas en el período seleccionado.':'No hay columnas de productos Arrivata detectadas.';
     return;
   }
   barWrap.style.display='block'; barMsg.style.display='none';
 
-  const labels=activeCols.map(colLabel);
-  const data=activeCols.map(c=>parseQty(lastVisit[c]));
-  const colors=data.map(v=>v>0?'#8B1714':'#E5D9C4');
-  const borderColors=data.map(v=>v>0?'#1e40af':'#cbd5e1');
+  const type=app.detChartTypes.bar;
+  const labels=arrCols.map(colLabel);
+  const data=arrCols.map(c=>parseQty(lastVisit[c]));
 
-  app.detCharts.bar=new Chart(document.getElementById('det-chart-bar'),{
-    type:'bar',
-    data:{labels,datasets:[{ data, backgroundColor:colors, borderColor:borderColors, borderWidth:1, borderRadius:5, borderSkipped:false }]},
-    options:{
+  let chartType, datasets, options;
+  if(type==='donut'){
+    chartType='doughnut';
+    datasets=[{ data, backgroundColor:arrCols.map((c,i)=>PROD_COLORS[i%PROD_COLORS.length]), borderWidth:1 }];
+    options={
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'bottom', labels:{ font:{size:9}, boxWidth:9, padding:8 } },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.label}: ${ctx.raw} unidades` } }
+      }
+    };
+  } else {
+    const colors=data.map(v=>v>0?'#8B1714':'#E5D9C4');
+    const borderColors=data.map(v=>v>0?'#1e40af':'#cbd5e1');
+    chartType='bar';
+    datasets=[{ data, backgroundColor:colors, borderColor:borderColors, borderWidth:1, borderRadius:5, borderSkipped:false }];
+    options={
+      indexAxis: type==='horizontal'?'y':'x',
       responsive:true, maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
-        tooltip:{ callbacks:{ label:ctx=>` ${ctx.raw} unidades`+(lastVisit[activeCols[ctx.dataIndex]]?.includes('+')?'+':'') } }
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.raw} unidades`+(lastVisit[arrCols[ctx.dataIndex]]?.includes('+')?'+':'') } }
       },
       scales:{
-        x:{ ticks:{font:{size:9},maxRotation:40}, grid:{display:false} },
+        x:{ ticks:{font:{size:9},maxRotation:40}, grid:{display:type==='horizontal'} },
         y:{ beginAtZero:true, ticks:{font:{size:10},precision:0,color:'#7B6A55'}, grid:{color:'#F3ECD9'} }
       }
-    }
+    };
+  }
+
+  app.detCharts.bar=new Chart(document.getElementById('det-chart-bar'),{
+    type: chartType,
+    data:{labels,datasets},
+    options
   });
 }
 
@@ -2633,10 +2674,10 @@ function applyDetailCount(){
 
   const arrCols=app.brandCols.ARRIVATA;
   updateDetailStats(visits, arrCols);
-  const activeCols=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0));
   const lastVisit=visits[visits.length-1]||{};
-  renderDetailLine(visits, activeCols);
-  renderDetailBar(lastVisit, activeCols, arrCols);
+  app._detCurrentVisits=visits; app._detCurrentArrCols=arrCols; app._detCurrentLastVisit=lastVisit;
+  renderDetailLine(visits, arrCols);
+  renderDetailBar(lastVisit, arrCols);
   renderDetailTable(visits, arrCols);
 }
 
