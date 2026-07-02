@@ -77,6 +77,34 @@
   input,select { width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:.875rem;outline:none;transition:border-color .15s,box-shadow .15s;background:#fff; }
   input:focus,select:focus { border-color:var(--red);box-shadow:0 0 0 3px rgba(139,23,20,.12); }
 
+  /* ── Dropdown propio (reemplaza la lista nativa del <select>, que el
+     navegador renderiza con la tipografía del sistema en vez del CSS) ── */
+  .csel-wrap { position:relative;display:inline-block; }
+  .csel-wrap select.csel-native { position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none; }
+  .csel-trigger {
+    width:100%;height:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;
+    font-family:'Lato',system-ui,sans-serif;font-size:.875rem;color:var(--text);cursor:pointer;
+    text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,box-shadow .15s;
+  }
+  .csel-trigger:hover { border-color:var(--gold); }
+  .csel-trigger:focus { outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(139,23,20,.12); }
+  .csel-trigger::after {
+    content:'';flex-shrink:0;width:7px;height:7px;border-right:1.6px solid var(--muted);border-bottom:1.6px solid var(--muted);
+    transform:rotate(45deg) translateY(-2px);transition:transform .15s;
+  }
+  .csel-trigger.csel-open::after { transform:rotate(-135deg) translateY(1px); }
+  .csel-trigger:disabled { opacity:.55;cursor:not-allowed; }
+  .csel-list {
+    position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:260px;overflow-y:auto;
+    background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 30px rgba(28,18,8,.16);
+    z-index:150;display:none;padding:4px;font-family:'Lato',system-ui,sans-serif;
+  }
+  .csel-list.csel-open { display:block; }
+  .csel-option { padding:7px 10px;border-radius:6px;font-size:.85rem;color:var(--text);cursor:pointer;white-space:nowrap; }
+  .csel-option:hover { background:var(--cream-2); }
+  .csel-option-active { background:var(--cream-2);color:var(--red);font-weight:700; }
+
   #report-output h1 { font-family:'Playfair Display',serif;font-size:1.25rem;font-weight:700;color:var(--red);margin:1em 0 .4em; }
   #report-output h2 { font-size:1rem;font-weight:700;border-bottom:2px solid var(--border);padding-bottom:4px;margin:1em 0 .4em; }
   #report-output h3 { font-size:.9rem;font-weight:700;color:var(--muted);margin:.8em 0 .3em; }
@@ -1184,6 +1212,130 @@ function limpiarFormSupervisor(){
   document.getElementById('admin-msg').style.display='none';
 }
 
+// ── Dropdown propio ──────────────────────────────────────────
+// Envuelve cada <select> con un trigger + lista propios (misma tipografía
+// y colores del sitio) sin tocar la lógica existente: el <select> original
+// sigue siendo la fuente de verdad (mismo id, mismo .value, mismo evento
+// 'change'), solo queda oculto y se usa como storage.
+function initCustomSelects(){
+  document.querySelectorAll('select').forEach(enhanceSelect);
+}
+
+function enhanceSelect(sel){
+  if(sel.dataset.cselDone) return;
+  sel.dataset.cselDone='1';
+
+  // El <select> original trae estilos inline pensados para SÍ MISMO: los de
+  // layout (ancho/flex) tienen que pasar al wrapper para que ocupe el mismo
+  // lugar; los de densidad (tamaño de letra/padding) van al trigger, para
+  // que selects compactos (ej. tipo de gráfico) no queden con el tamaño
+  // genérico. Bordes/fondo/color se ignoran a propósito: los define
+  // .csel-trigger para que todos los dropdowns se vean consistentes.
+  const LAYOUT_PROPS=['width','min-width','max-width','flex','flex-grow','flex-shrink','flex-basis','margin','margin-left','margin-right','margin-top','margin-bottom','display'];
+  const DENSITY_PROPS=['font-size','padding','padding-left','padding-right','padding-top','padding-bottom'];
+  function pickStyle(styleAttr, props){
+    if(!styleAttr) return '';
+    return styleAttr.split(';').map(s=>s.trim()).filter(Boolean)
+      .filter(decl=>props.includes(decl.split(':')[0].trim().toLowerCase()))
+      .join(';');
+  }
+
+  const inlineStyle=sel.getAttribute('style');
+  const wrap=document.createElement('div');
+  wrap.className='csel-wrap';
+  const wrapStyle=pickStyle(inlineStyle, LAYOUT_PROPS);
+  if(wrapStyle) wrap.setAttribute('style', wrapStyle);
+  if(sel.className) wrap.className+=' '+sel.className;
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  sel.classList.add('csel-native');
+  sel.removeAttribute('style');
+
+  const trigger=document.createElement('button');
+  trigger.type='button';
+  trigger.className='csel-trigger';
+  const triggerStyle=pickStyle(inlineStyle, DENSITY_PROPS);
+  if(triggerStyle) trigger.setAttribute('style', triggerStyle);
+  if(sel.disabled) trigger.disabled=true;
+  wrap.appendChild(trigger);
+
+  const list=document.createElement('div');
+  list.className='csel-list';
+  wrap.appendChild(list);
+
+  function syncTrigger(){
+    const opt=sel.options[sel.selectedIndex];
+    trigger.textContent = opt ? opt.textContent : '';
+    trigger.disabled = sel.disabled;
+  }
+
+  function buildList(){
+    list.innerHTML='';
+    Array.from(sel.options).forEach((opt,i)=>{
+      const item=document.createElement('div');
+      item.className='csel-option'+(i===sel.selectedIndex?' csel-option-active':'');
+      item.textContent=opt.textContent;
+      item.onmousedown=(e)=>{
+        e.preventDefault();
+        if(sel.selectedIndex!==i){
+          sel.selectedIndex=i;
+          sel.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+        syncTrigger();
+        closeList();
+      };
+      list.appendChild(item);
+    });
+  }
+
+  function openList(){
+    if(sel.disabled) return;
+    buildList();
+    list.classList.add('csel-open');
+    trigger.classList.add('csel-open');
+    document.addEventListener('mousedown', onDocClick);
+  }
+  function closeList(){
+    list.classList.remove('csel-open');
+    trigger.classList.remove('csel-open');
+    document.removeEventListener('mousedown', onDocClick);
+  }
+  function onDocClick(e){ if(!wrap.contains(e.target)) closeList(); }
+
+  trigger.onclick=(e)=>{
+    e.stopPropagation();
+    list.classList.contains('csel-open') ? closeList() : openList();
+  };
+  trigger.onkeydown=(e)=>{
+    if(e.key==='Escape'){ closeList(); return; }
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); list.classList.contains('csel-open')?closeList():openList(); return; }
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      const n=sel.options.length;
+      if(!n) return;
+      const dir=e.key==='ArrowDown'?1:-1;
+      sel.selectedIndex=(sel.selectedIndex+dir+n)%n;
+      sel.dispatchEvent(new Event('change',{bubbles:true}));
+      syncTrigger();
+      if(list.classList.contains('csel-open')) buildList();
+    }
+  };
+
+  // Reflejar cambios que no pasan por el trigger (options regeneradas via
+  // innerHTML, p.ej. al repoblar filtros de zona/local dinámicamente)
+  new MutationObserver(syncTrigger).observe(sel, {childList:true});
+  sel._cselSync=syncTrigger;
+
+  syncTrigger();
+}
+
+// Llamar después de cambiar sel.value/selectedIndex por código (no dispara
+// mutación de DOM, así que el trigger no se resincroniza solo)
+function cselSync(id){
+  const sel=document.getElementById(id);
+  if(sel && sel._cselSync) sel._cselSync();
+}
+
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Auth check
@@ -1239,6 +1391,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const card = e.target.closest('.local-card');
     if (card) openDetail(card.dataset.local, 'locales');
   });
+
+  initCustomSelects();
 });
 
 // ── Modal de configuración ────────────────────────────────────
@@ -1600,7 +1754,7 @@ function renderTable(){
 
 function prevPage(){ if(app.page>1){ app.page--; renderTable(); } }
 function nextPage(){ const max=Math.ceil(getFiltered().length/app.pageSize); if(app.page<max){ app.page++; renderTable(); } }
-function clearFilters(){ document.getElementById('srch').value=''; document.getElementById('f-zona').value=''; document.getElementById('f-arrivata').value=''; app.page=1; renderTable(); }
+function clearFilters(){ document.getElementById('srch').value=''; document.getElementById('f-zona').value=''; document.getElementById('f-arrivata').value=''; cselSync('f-zona'); cselSync('f-arrivata'); app.page=1; renderTable(); }
 
 // ── Faltantes por producto (última visita de cada local) ───────
 function getLastVisitByLocal(){
