@@ -1012,6 +1012,7 @@
 <script>
 // ── Constants ────────────────────────────────────────────────
 const DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSOqs1_WaTUPxjglZqkpWQFfoHtNtJhIvMr3sATF2_B8m2XmKFZa4Kx4mhoE9lqcg/pub?output=csv';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxgzaYvOFWqFkJeXXExmUdTdzPwvIXlRSVT6TgKCwOAd9UAAJGD7QuN_AKArpxBADYwaA/exec';
 
 const BRAND_SUFFIXES = {
   ARRIVATA:  [' AR'],
@@ -1030,7 +1031,7 @@ const PROD_COLORS = [
 
 // ── State ────────────────────────────────────────────────────
 const app = {
-  cfg: { url: DEFAULT_URL, key: '', scriptUrl: '' },
+  cfg: { url: DEFAULT_URL, key: '', scriptUrl: DEFAULT_SCRIPT_URL },
   raw: [],
   brandCols: { ARRIVATA:[], FESTA:[], WAPI:[], CUISINE:[], CARREFOUR:[] },
   periodDays: 7,
@@ -1185,6 +1186,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const saved = localStorage.getItem('arrivata_v2');
   if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
+  if (!app.cfg.scriptUrl) app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
+  // Migración: forzar el scriptUrl vigente en todos los dispositivos una vez,
+  // así se resincronizan solos aunque tengan guardada una URL vieja.
+  if (localStorage.getItem('arrivata_script_url_sync') !== DEFAULT_SCRIPT_URL) {
+    app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
+    localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
+    localStorage.setItem('arrivata_script_url_sync', DEFAULT_SCRIPT_URL);
+  }
   // Si el supervisor tiene CSV propio, toma prioridad sobre el cfg guardado
   if(app.supervisor&&app.supervisor.csvUrl) app.cfg.url=app.supervisor.csvUrl;
   const savedCharts = localStorage.getItem('arrivata_charts');
@@ -1240,7 +1249,7 @@ function closeModal(){ document.getElementById('modal').style.display='none'; }
 function saveAndLoad(){
   app.cfg.url = document.getElementById('inp-url').value.trim() || DEFAULT_URL;
   app.cfg.key = document.getElementById('inp-key').value.trim();
-  app.cfg.scriptUrl = document.getElementById('inp-script').value.trim();
+  app.cfg.scriptUrl = document.getElementById('inp-script').value.trim() || DEFAULT_SCRIPT_URL;
   localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
   const noKeyEl=document.getElementById('no-key-warn');
   if(noKeyEl) noKeyEl.style.display='none';
