@@ -1187,12 +1187,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('arrivata_v2');
   if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
   if (!app.cfg.scriptUrl) app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
-  // Migración: forzar el scriptUrl vigente en todos los dispositivos una vez,
-  // así se resincronizan solos aunque tengan guardada una URL vieja.
-  if (localStorage.getItem('arrivata_script_url_sync') !== DEFAULT_SCRIPT_URL) {
+  // Migración: forzar la URL del spreadsheet y del Apps Script vigentes en
+  // todos los dispositivos una vez, así se resincronizan solos aunque tengan
+  // guardado un valor viejo en su localStorage.
+  const SYNC_MARK = DEFAULT_URL + '|' + DEFAULT_SCRIPT_URL;
+  if (localStorage.getItem('arrivata_defaults_sync') !== SYNC_MARK) {
+    app.cfg.url = DEFAULT_URL;
     app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
     localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
-    localStorage.setItem('arrivata_script_url_sync', DEFAULT_SCRIPT_URL);
+    localStorage.setItem('arrivata_defaults_sync', SYNC_MARK);
   }
   // Si el supervisor tiene CSV propio, toma prioridad sobre el cfg guardado
   if(app.supervisor&&app.supervisor.csvUrl) app.cfg.url=app.supervisor.csvUrl;
