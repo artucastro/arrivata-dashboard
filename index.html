@@ -25,7 +25,19 @@
   }
 
   * { font-family:'Lato',system-ui,sans-serif; box-sizing:border-box; }
-  body { background:var(--cream); color:var(--text); min-height:100vh; }
+  body { background:var(--cream); color:var(--text); min-height:100vh; padding-left:220px; }
+
+  /* ── Sidebar de supervisores ─────────────────────────────── */
+  #app-sidebar { position:fixed; top:0; left:0; width:220px; height:100vh; background:#fff; border-right:1px solid var(--border); overflow-y:auto; z-index:45; padding:16px 0; }
+  #app-sidebar .sb-title { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); padding:0 16px 8px; }
+  #app-sidebar .sb-item { display:flex; flex-direction:column; gap:1px; padding:9px 16px; cursor:pointer; border-left:3px solid transparent; }
+  #app-sidebar .sb-item:hover { background:var(--cream); }
+  #app-sidebar .sb-item.active { background:#F9EDED; border-left-color:var(--red); }
+  #app-sidebar .sb-item .sb-name { font-size:.82rem; font-weight:700; color:var(--text); }
+  #app-sidebar .sb-item .sb-sub { font-size:.68rem; color:var(--muted); }
+  #app-sidebar .sb-divider { height:1px; background:var(--border); margin:10px 0; }
+  #sidebar-toggle { display:none; }
+  #sidebar-overlay { display:none; }
 
   .card { background:#fff; border:1px solid var(--border); border-radius:10px; }
   .stat-card { transition:transform .2s,box-shadow .2s; }
@@ -127,6 +139,12 @@
 
   /* ── RESPONSIVE ─────────────────────────────────────── */
   @media(max-width:768px){
+    body { padding-left:0 !important; }
+    #app-sidebar { transform:translateX(-100%); transition:transform .2s ease; box-shadow:2px 0 12px rgba(0,0,0,.15); }
+    #app-sidebar.open { transform:translateX(0); }
+    #sidebar-toggle { display:flex !important; align-items:center; justify-content:center; }
+    #sidebar-overlay.open { display:block; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:44; }
+
     .charts-grid     { grid-template-columns:1fr !important; }
     .stats-grid      { grid-template-columns:repeat(3,1fr) !important; }
     .hide-sm         { display:none !important; }
@@ -204,6 +222,13 @@
 </style>
 </head>
 <body>
+
+<!-- ── SIDEBAR DE SUPERVISORES ───────────────────────────────── -->
+<div id="sidebar-overlay" onclick="closeSidebarMobile()"></div>
+<aside id="app-sidebar">
+  <div class="sb-title">Vista</div>
+  <div id="sb-list"></div>
+</aside>
 
 <!-- ── LOGIN PAGE ────────────────────────────────────────────── -->
 <div id="login-page">
@@ -284,9 +309,12 @@
               <input id="ns-zona" type="text" placeholder="ej. Zona Sur" style="width:100%;box-sizing:border-box">
             </div>
             <div style="grid-column:1/-1">
-              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Nombre de la hoja en el Spreadsheet</label>
-              <input id="ns-sheet" type="text" placeholder="ej. Supervisión Juan" style="width:100%;box-sizing:border-box">
-              <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Tiene que coincidir exactamente con el nombre de la pestaña en el Google Sheet</div>
+              <label style="font-size:.74rem;font-weight:700;color:var(--muted);display:block;margin-bottom:3px">Spreadsheet del supervisor</label>
+              <div style="display:flex;gap:8px">
+                <input id="ns-spreadsheet" type="text" placeholder="Pegá la URL del Google Sheet, o generá uno nuevo" style="flex:1;width:100%;box-sizing:border-box">
+                <button type="button" onclick="crearSpreadsheetSupervisor()" style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-weight:700;font-size:.78rem;cursor:pointer;white-space:nowrap">Crear nuevo</button>
+              </div>
+              <div id="ns-spreadsheet-msg" style="font-size:.68rem;color:var(--muted);margin-top:3px">Pegá la URL de un Sheet existente, o clic en "Crear nuevo" para generar uno con las columnas correctas.</div>
             </div>
           </div>
           <div style="display:flex;gap:10px">
@@ -480,6 +508,9 @@
 <nav style="background:#fff;border-bottom:3px solid var(--red);position:sticky;top:0;z-index:40;box-shadow:0 2px 8px rgba(139,23,20,.10)">
   <div class="nav-inner" style="max-width:1400px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between">
     <div style="display:flex;align-items:center;gap:14px">
+      <button id="sidebar-toggle" onclick="toggleSidebarMobile()" style="width:34px;height:34px;border-radius:8px;border:1.5px solid var(--border);background:#fff;cursor:pointer;flex-shrink:0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
       <img class="nav-logo" src="https://arrivata.com.ar/wp-content/uploads/2020/05/logo-arrivata.png" alt="Arrivata" style="height:46px;object-fit:contain;display:block">
       <div class="nav-sub" style="border-left:1px solid var(--border);padding-left:14px">
         <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:.9rem;color:var(--red);line-height:1.1">Dashboard de Presencia</div>
@@ -515,7 +546,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="nav-btn-lbl">Exportar</span>
       </button>
-      <button class="btn" onclick="abrirVerificacion('cargarVisita',null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
+      <button id="btn-nueva-visita-nav" class="btn" onclick="abrirVerificacion('cargarVisita',null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span class="nav-btn-lbl">Nueva Visita</span>
       </button>
@@ -555,13 +586,6 @@
         <button class="btn btn-ghost period-btn"               data-days="30" onclick="setPeriod(30)" style="padding:5px 14px;font-size:.8rem">Último mes</button>
         <button class="btn btn-ghost period-btn"               data-days="0"  onclick="setPeriod(0)"  style="padding:5px 14px;font-size:.8rem">Todo</button>
         <span id="period-label" style="font-size:.75rem;color:var(--muted);margin-left:4px"></span>
-      </div>
-      <div id="zona-switcher" style="display:none;align-items:center;gap:8px">
-        <span style="font-size:.8rem;font-weight:700;color:var(--muted)">Vista:</span>
-        <select id="zona-select" onchange="cargarZona(this.value)" style="font-size:.8rem;border-radius:8px;padding:5px 12px;border:1.5px solid var(--border);background:#fff;font-weight:600;color:var(--text)">
-          <option value="own">Mi zona</option>
-          <option value="all">Todas las zonas</option>
-        </select>
       </div>
     </div>
 
@@ -837,7 +861,7 @@
       </button>
       <select id="det-selector" class="det-selector" onchange="openDetail(this.value)" style="width:auto;min-width:240px;font-weight:500;flex:1;max-width:400px">
       </select>
-      <button class="btn" onclick="abrirVerificacion('cargarVisita',document.getElementById('det-name').textContent)"
+      <button id="btn-nueva-visita-det" class="btn" onclick="abrirVerificacion('cargarVisita',document.getElementById('det-name').textContent)"
         style="background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:7px 14px;font-size:.82rem;font-weight:700;display:flex;align-items:center;gap:6px;flex-shrink:0">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Cargar Visita
@@ -880,7 +904,7 @@
     <div id="det-localdata-card" class="card" style="padding:16px 20px;margin-bottom:18px;display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <span style="font-family:'Playfair Display',serif;font-weight:700;font-size:.9rem;color:var(--text)">Datos del local</span>
-        <button onclick="abrirEditarLocalData()" style="font-size:.72rem;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;font-weight:700">Editar</button>
+        <button id="btn-editar-localdata" onclick="abrirEditarLocalData()" style="font-size:.72rem;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;font-weight:700">Editar</button>
       </div>
       <div id="det-localdata-content" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:.82rem"></div>
     </div>
@@ -1047,7 +1071,7 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzeQ4_QMby97x30CDj1V4lzV4ZsT01dEA9YzEB_7YA0D_oulcimCFdGXH3XKvhZxp18Fw/exec';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaL_h_TXHT8sIL6nUECW-xisqY1qF3XZfVrzYUMX8pUSkkPLQJEWOlY5sfhUAQc48vSw/exec';
 
 const BRAND_SUFFIXES = {
   ARRIVATA:  [' AR'],
@@ -1066,7 +1090,7 @@ const PROD_COLORS = [
 
 // ── State ────────────────────────────────────────────────────
 const app = {
-  cfg: { key: '', scriptUrl: DEFAULT_SCRIPT_URL, sheetName: '' },
+  cfg: { key: '', scriptUrl: DEFAULT_SCRIPT_URL },
   raw: [],
   brandCols: { ARRIVATA:[], FESTA:[], WAPI:[], CUISINE:[], CARREFOUR:[] },
   periodDays: 7,
@@ -1088,7 +1112,7 @@ const app = {
   _fotos: {},
   detLocal: '',
   agendaDays: 7,
-  viewZone: 'own',
+  viewZone: 'all', // 'all' (Global) o el username de un supervisor
   allSupervisors: []
 };
 
@@ -1111,6 +1135,7 @@ function iniciarSesion(){
 }
 
 function refreshNavSupervisor(){
+  refreshEditGating();
   const sup=app.supervisor;
   const el=document.getElementById('nav-supervisor');
   const loginBtn=document.getElementById('nav-login-btn');
@@ -1171,7 +1196,7 @@ async function cargarListaSupervisores(){
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--cream);border-radius:10px;margin-bottom:8px;gap:8px;flex-wrap:wrap">
           <div>
             <div style="font-weight:700;font-size:.85rem">${esc(s.name)}${s.isAdmin?' <span style="font-size:.65rem;background:#fef2f2;color:var(--red);padding:1px 7px;border-radius:99px;font-weight:700">Admin</span>':''}</div>
-            <div style="font-size:.72rem;color:var(--muted)">@${esc(s.username)} &middot; ${esc(s.zona||'Sin zona')} &middot; Hoja: ${esc(s.sheetName||'—')}</div>
+            <div style="font-size:.72rem;color:var(--muted)">@${esc(s.username)} &middot; ${esc(s.zona||'Sin zona')}</div>
           </div>
           ${!s.isAdmin?`<button onclick="eliminarSupervisor('${esc(s.username)}')" style="font-size:.72rem;padding:3px 10px;border-radius:8px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;font-weight:700;cursor:pointer">Eliminar</button>`:''}
         </div>`).join('');
@@ -1180,19 +1205,48 @@ async function cargarListaSupervisores(){
   }
 }
 
+function extractSpreadsheetId(input){
+  const m=input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m?m[1]:input.trim();
+}
+
+async function crearSpreadsheetSupervisor(){
+  const nombre=document.getElementById('ns-nombre').value.trim()||'Supervisor';
+  const msgEl=document.getElementById('ns-spreadsheet-msg');
+  if(!app.cfg.scriptUrl){ msgEl.textContent='Falta URL del Apps Script.'; msgEl.style.color='#dc2626'; return; }
+  const auth=_authFields();
+  if(!auth.username||!auth.password){ msgEl.textContent='Identificate como admin primero.'; msgEl.style.color='#dc2626'; return; }
+  msgEl.textContent='Creando spreadsheet…'; msgEl.style.color='var(--muted)';
+  try{
+    const url=`${app.cfg.scriptUrl}?action=createSupervisorSheet&u=${encodeURIComponent(auth.username)}&p=${encodeURIComponent(auth.password)}&nombre=${encodeURIComponent(nombre)}`;
+    const r=await fetch(url,{redirect:'follow'});
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById('ns-spreadsheet').value=d.url;
+      msgEl.textContent='¡Listo! Spreadsheet creado y enlazado.'; msgEl.style.color='#16a34a';
+    } else {
+      msgEl.textContent=d.error||'No se pudo crear.'; msgEl.style.color='#dc2626';
+    }
+  } catch(e){
+    msgEl.textContent='Error de conexión.'; msgEl.style.color='#dc2626';
+  }
+}
+
 async function crearSupervisor(){
   const nombre=document.getElementById('ns-nombre').value.trim();
   const user=document.getElementById('ns-user').value.trim().toLowerCase().replace(/\s+/g,'');
   const pwd=document.getElementById('ns-pwd').value.trim();
   const zona=document.getElementById('ns-zona').value.trim();
-  const sheet=document.getElementById('ns-sheet').value.trim();
+  const sheetInput=document.getElementById('ns-spreadsheet').value.trim();
   const msg=document.getElementById('admin-msg');
   if(!nombre||!user||!pwd){ msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Completá nombre, usuario y contraseña.'; return; }
+  if(!sheetInput){ msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Falta el spreadsheet del supervisor (pegá una URL o creá uno nuevo).'; return; }
   if(!app.cfg.scriptUrl){ msg.textContent='Falta URL del Apps Script.'; msg.style.display='block'; return; }
+  const spreadsheetId=extractSpreadsheetId(sheetInput);
   try{
     await fetch(app.cfg.scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({action:'createSupervisor',nombre,username:user,password:pwd,zona,sheetName:sheet,isAdmin:false})});
-    msg.style.color='#16a34a'; msg.textContent='¡Supervisor creado!'; msg.style.display='block';
+      body:JSON.stringify({action:'createSupervisor',nombre,newUsername:user,newPassword:pwd,zona,spreadsheetId,isAdmin:false, ..._authFields()})});
+    msg.style.color='#16a34a'; msg.textContent='Enviado. Revisá la lista de arriba en unos segundos para confirmar.'; msg.style.display='block';
     limpiarFormSupervisor();
     setTimeout(()=>cargarListaSupervisores(),800);
   } catch(e){
@@ -1203,12 +1257,12 @@ async function crearSupervisor(){
 async function eliminarSupervisor(username){
   if(!confirm(`¿Eliminar al supervisor "${username}"? Esta acción no se puede deshacer.`)) return;
   await fetch(app.cfg.scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({action:'deleteSupervisor',username})});
+    body:JSON.stringify({action:'deleteSupervisor', targetUsername:username, ..._authFields()})});
   setTimeout(()=>cargarListaSupervisores(),600);
 }
 
 function limpiarFormSupervisor(){
-  ['ns-nombre','ns-user','ns-pwd','ns-zona','ns-sheet'].forEach(id=>document.getElementById(id).value='');
+  ['ns-nombre','ns-user','ns-pwd','ns-zona','ns-spreadsheet'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('admin-msg').style.display='none';
 }
 
@@ -1431,8 +1485,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
     const verAt=parseInt(sessionStorage.getItem('arr_verified_at')||'0',10);
     if(!isNaN(verAt)) _verifiedAt=verAt;
+    const pwdStr=sessionStorage.getItem('arr_verified_pwd');
+    if(pwdStr) _verifiedPwd=pwdStr;
+    // Si ya te identificaste como supervisor, arrancás viendo tu propia zona;
+    // si no (contraseña compartida, ej. gerentes/CEOs), arranca en Global.
+    if(app.supervisor&&app.supervisor.username) app.viewZone=app.supervisor.username;
     refreshNavSupervisor();
   } else {
+    refreshEditGating();
     setTimeout(()=>document.getElementById('login-pwd').focus(), 100);
   }
 
@@ -1446,8 +1506,6 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
     localStorage.setItem('arrivata_defaults_sync', DEFAULT_SCRIPT_URL);
   }
-  // Si el supervisor tiene hoja propia, toma prioridad sobre el cfg guardado
-  if(app.supervisor&&app.supervisor.sheetName) app.cfg.sheetName=app.supervisor.sheetName;
   const savedCharts = localStorage.getItem('arrivata_charts');
   if(savedCharts) try { app.chartConfigs=JSON.parse(savedCharts); } catch(e){}
   // Sync selectors with saved config
@@ -1463,6 +1521,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const _today=new Date();
   document.getElementById('inp-hasta').value=toISO(_today);
   document.getElementById('inp-desde').value=toISO(new Date(_today.getFullYear(),_today.getMonth(),_today.getDate()-30));
+  renderSidebar();
   loadData();
   loadSupervisors();
   setInterval(loadData, 5*60*1000); // auto-sync cada 5 minutos
@@ -1537,10 +1596,10 @@ function processCSV(csv){
   loadLocalData();
 }
 
-function visitasUrl(sheetName){
-  return app.cfg.scriptUrl + '?action=getVisitas' +
-    (sheetName ? '&sheet=' + encodeURIComponent(sheetName) : '') +
-    '&_t=' + Date.now();
+function visitasUrl(){
+  const zone=app.viewZone;
+  const qs = zone==='all' ? '&all=1' : (zone ? '&supervisor=' + encodeURIComponent(zone) : '');
+  return app.cfg.scriptUrl + '?action=getVisitas' + qs + '&_t=' + Date.now();
 }
 
 function loadData(){
@@ -1551,7 +1610,7 @@ function loadData(){
     setLoading(false);
     return Promise.resolve();
   }
-  return fetch(visitasUrl(app.cfg.sheetName), { mode:'cors', credentials:'omit', cache:'no-store' })
+  return fetch(visitasUrl(), { mode:'cors', credentials:'omit', cache:'no-store' })
     .then(r => {
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
@@ -1563,54 +1622,67 @@ function loadData(){
     });
 }
 
-// ── Multi-zona ───────────────────────────────────────────────
+// ── Sidebar multi-supervisor ───────────────────────────────────
 async function loadSupervisors(){
   if(!app.cfg.scriptUrl) return;
   try{
     const r=await fetch(app.cfg.scriptUrl+'?action=getSupervisors',{redirect:'follow'});
     const d=await r.json();
-    if(d.ok){ app.allSupervisors=d.supervisors||[]; populateZonaSwitcher(); }
+    if(d.ok){ app.allSupervisors=d.supervisors||[]; renderSidebar(); }
   } catch(e){}
 }
 
-function populateZonaSwitcher(){
-  const sel=document.getElementById('zona-select');
-  const sw=document.getElementById('zona-switcher');
-  if(!sel||!sw) return;
-  const sups=(app.allSupervisors||[]).filter(s=>s.sheetName);
+function renderSidebar(){
+  const list=document.getElementById('sb-list');
+  if(!list) return;
+  const sups=[...(app.allSupervisors||[])].sort((a,b)=>a.name.localeCompare(b.name));
   const myUser=(app.supervisor&&app.supervisor.username)||'';
-  sel.innerHTML='<option value="own">Mi zona</option>';
-  sups.forEach(s=>{
-    if(s.username===myUser) return;
-    const o=document.createElement('option');
-    o.value=s.username;
-    o.textContent=(s.zona||s.name)+' ('+s.name+')';
-    sel.appendChild(o);
-  });
-  const allOpt=document.createElement('option');
-  allOpt.value='all'; allOpt.textContent='Todas las zonas';
-  sel.appendChild(allOpt);
-  sw.style.display=sups.length>0?'flex':'none';
+  const itemHtml=(value,name,sub,mine)=>`
+    <div class="sb-item${app.viewZone===value?' active':''}" onclick="selectZone('${esc(value)}')">
+      <div class="sb-name">${esc(name)}${mine?' · vos':''}</div>
+      ${sub?`<div class="sb-sub">${esc(sub)}</div>`:''}
+    </div>`;
+  let html=itemHtml('all','🌐 Global','Todos los supervisores',false);
+  html+='<div class="sb-divider"></div>';
+  html+=sups.map(s=>itemHtml(s.username, s.name, s.zona||'', s.username===myUser)).join('');
+  list.innerHTML=html;
 }
 
-async function cargarZona(value){
+function selectZone(value){
   app.viewZone=value;
-  if(value==='own'){
-    app.cfg.sheetName=(app.supervisor&&app.supervisor.sheetName)||'';
-    loadData();
-  } else if(value==='all'){
-    loadAllZones();
-  } else {
-    const sup=(app.allSupervisors||[]).find(s=>s.username===value);
-    if(sup){ app.cfg.sheetName=sup.sheetName||''; loadData(); }
-  }
+  renderSidebar();
+  refreshEditGating();
+  loadData();
+  closeSidebarMobile();
+  const lbl=value==='all' ? 'Todos los supervisores' :
+    ((app.allSupervisors||[]).find(s=>s.username===value)||{}).name || value;
+  document.getElementById('sync-label').textContent=lbl+' · '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
 }
 
-async function loadAllZones(){
-  app.viewZone='all';
-  app.cfg.sheetName='';
-  await loadData();
-  document.getElementById('sync-label').textContent='Todas las zonas · '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+function toggleSidebarMobile(){
+  document.getElementById('app-sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebarMobile(){
+  document.getElementById('app-sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
+// ── Permisos de edición ─────────────────────────────────────────
+function canEditCurrentZone(){
+  if(!app.supervisor || !app.supervisor.username) return false;
+  if(app.supervisor.isAdmin) return true;
+  return app.viewZone===app.supervisor.username;
+}
+
+function refreshEditGating(){
+  const can=canEditCurrentZone();
+  ['btn-nueva-visita-nav','btn-nueva-visita-det'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display=can?'flex':'none';
+  });
+  const editLd=document.getElementById('btn-editar-localdata');
+  if(editLd) editLd.style.display=can?'':'none';
 }
 
 function detectBrands(headers){
@@ -3150,7 +3222,7 @@ function saveNota(local, fecha, texto){
   fetch(app.cfg.scriptUrl,{
     method:'POST', mode:'no-cors',
     headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({action:'saveNota', local, fecha, texto})
+    body:JSON.stringify({action:'saveNota', local, fecha, texto, ..._authFields(app.viewZone)})
   }).catch(()=>{});
 }
 
@@ -3322,7 +3394,7 @@ function guardarLocalData(){
   if(app.cfg.scriptUrl){
     fetch(app.cfg.scriptUrl,{method:'POST',mode:'no-cors',
       headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({action:'saveLocalData',local:localName,datos})
+      body:JSON.stringify({action:'saveLocalData',local:localName,datos, ..._authFields(app.viewZone)})
     }).catch(()=>{});
   }
 }
@@ -3378,6 +3450,7 @@ function closeCargarVisita(){
 let _pendingVerOp=null;
 let _currentOpSupervisor=null;
 let _verifiedAt=0;
+let _verifiedPwd='';
 const VERIFY_TTL_MS=30*60*1000; // sesión verificada: 30 min de inactividad (sobrevive a recargar la página, se guarda en sessionStorage)
 
 function abrirVerificacion(action, context){
@@ -3412,7 +3485,7 @@ async function verificarYProceder(){
   if(!app.cfg.scriptUrl){
     if(pwd==='1234'){
       document.getElementById('modal-verificar').style.display='none';
-      ejecutarOpPendiente({name:user,username:user,sheetName:'',zona:''});
+      ejecutarOpPendiente({name:user,username:user,zona:''}, pwd);
     } else {
       errEl.textContent='Contraseña incorrecta.'; errEl.style.display='block';
       document.getElementById('ver-pwd').value=''; document.getElementById('ver-pwd').focus();
@@ -3427,7 +3500,7 @@ async function verificarYProceder(){
     const d=await r.json();
     if(d.ok){
       document.getElementById('modal-verificar').style.display='none';
-      ejecutarOpPendiente(d.supervisor);
+      ejecutarOpPendiente(d.supervisor, pwd);
     } else {
       errEl.textContent=d.error||'Usuario o contraseña incorrectos.';
       errEl.style.display='block';
@@ -3441,24 +3514,40 @@ async function verificarYProceder(){
   }
 }
 
-function ejecutarOpPendiente(supervisor){
+function ejecutarOpPendiente(supervisor, pwd){
   if(!_pendingVerOp) return;
   const {action,context}=_pendingVerOp;
   _pendingVerOp=null;
   _currentOpSupervisor=supervisor;
   _verifiedAt=Date.now();
   sessionStorage.setItem('arr_verified_at', String(_verifiedAt));
+  if(pwd!==undefined){
+    _verifiedPwd=pwd;
+    sessionStorage.setItem('arr_verified_pwd', pwd);
+  }
   // Actualizar perfil del supervisor activo
   app.supervisor=supervisor;
   sessionStorage.setItem('arr_supervisor',JSON.stringify(supervisor));
-  if(supervisor.sheetName) app.cfg.sheetName=supervisor.sheetName;
   refreshNavSupervisor();
+  // "Iniciar sesión" explícito → saltar a la zona propia
+  if(action==='login') selectZone(supervisor.username);
+  else refreshEditGating();
   if(action==='config'||action==='identificar'){
     abrirConfigModal(supervisor);
     return;
   }
   if(action==='cargarVisita') openCargarVisita(context);
   else if(action==='editarLocalData') openEditLocalDataModal(context);
+}
+
+// Credenciales del operador autenticado, para adjuntar a escrituras del backend.
+function _authFields(targetUsername){
+  const opSup=_currentOpSupervisor||app.supervisor||{};
+  return {
+    username: opSup.username||'',
+    password: _verifiedPwd||'',
+    targetUsername: targetUsername||opSup.username||''
+  };
 }
 
 function vfLocalChange(){
@@ -3572,14 +3661,11 @@ async function submitVisita(){
 
   try {
     // El supervisor que opera puede diferir del logueado (verificación propia)
-    const opSup=_currentOpSupervisor||app.supervisor||{};
-    const supervisorName=opSup.name||'';
-    const supervisorSheet=opSup.sheetName||(app.supervisor?app.supervisor.sheetName:'');
     await fetch(scriptUrl,{
       method:'POST',
       mode:'no-cors',
       headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({fecha, dia, local, ubicacion:ubic, productos, supervisorName, supervisorSheet})
+      body:JSON.stringify({action:'saveVisita', fecha, dia, local, ubicacion:ubic, productos, ..._authFields(app.viewZone)})
     });
 
     // Optimistic update: agregar la fila a app.raw de inmediato
@@ -3605,7 +3691,7 @@ async function submitVisita(){
     if(VF_PHOTOS.length>0&&scriptUrl){
       const fotos=VF_PHOTOS.map(p=>p.dataUrl.replace(/^data:image\/\w+;base64,/,''));
       fetch(scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({action:'savePhoto',local,fecha,fotos})}).catch(()=>{});
+        body:JSON.stringify({action:'savePhoto',local,fecha,fotos, ..._authFields(app.viewZone)})}).catch(()=>{});
     }
 
     btn.textContent='¡Guardado!'; btn.style.background='#16a34a';
@@ -3713,7 +3799,7 @@ function renderAgenda(){
       <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
         <span style="font-size:.74rem;font-weight:700;color:${sc};background:${sb};padding:3px 10px;border-radius:20px">${r.status}</span>
         <button onclick="openDetail('${esc(r.local)}','agenda')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text);font-weight:700;cursor:pointer">Ver</button>
-        <button onclick="abrirVerificacion('cargarVisita','${esc(r.local)}')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer">Visitar</button>
+        ${canEditCurrentZone()?`<button onclick="abrirVerificacion('cargarVisita','${esc(r.local)}')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer">Visitar</button>`:''}
       </div>
     </div>`;
   }).join('');
