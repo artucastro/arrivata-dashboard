@@ -1071,7 +1071,7 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaL_h_TXHT8sIL6nUECW-xisqY1qF3XZfVrzYUMX8pUSkkPLQJEWOlY5sfhUAQc48vSw/exec';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwrqAkHSQN9LcFRZGc-PgylaA5C_21TPhqNymlRdksxxdUMAx8iRBfMSes7ksxaBgGClA/exec';
 
 const BRAND_SUFFIXES = {
   ARRIVATA:  [' AR'],
@@ -1110,6 +1110,7 @@ const app = {
   _notas: {},
   _localData: {},
   _fotos: {},
+  _localesBase: [], // [{cadena, local, ubicacion}] — base de locales del supervisor actual, para autocompletar Nueva Visita
   detLocal: '',
   agendaDays: 7,
   viewZone: 'all', // 'all' (Global) o el username de un supervisor
@@ -1523,6 +1524,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inp-desde').value=toISO(new Date(_today.getFullYear(),_today.getMonth(),_today.getDate()-30));
   renderSidebar();
   loadData();
+  loadLocalesBase();
   loadSupervisors();
   setInterval(loadData, 5*60*1000); // auto-sync cada 5 minutos
 
@@ -1653,10 +1655,23 @@ function selectZone(value){
   renderSidebar();
   refreshEditGating();
   loadData();
+  loadLocalesBase();
   closeSidebarMobile();
   const lbl=value==='all' ? 'Todos los supervisores' :
     ((app.allSupervisors||[]).find(s=>s.username===value)||{}).name || value;
   document.getElementById('sync-label').textContent=lbl+' · '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+}
+
+// Locales "base" del supervisor actual (asignados de antemano, aunque no tengan
+// visitas todavía) — sirve para autocompletar el formulario de Nueva Visita.
+async function loadLocalesBase(){
+  app._localesBase=[];
+  if(!app.cfg.scriptUrl || app.viewZone==='all') return;
+  try{
+    const r=await fetch(app.cfg.scriptUrl+'?action=getLocalesBase&supervisor='+encodeURIComponent(app.viewZone),{redirect:'follow'});
+    const d=await r.json();
+    if(d.ok) app._localesBase=d.locales||[];
+  } catch(e){}
 }
 
 function toggleSidebarMobile(){
@@ -1671,6 +1686,7 @@ function closeSidebarMobile(){
 // ── Permisos de edición ─────────────────────────────────────────
 function canEditCurrentZone(){
   if(!app.supervisor || !app.supervisor.username) return false;
+  if(app.viewZone==='all') return false; // "Global" no es un spreadsheet puntual, no hay a dónde escribir
   if(app.supervisor.isAdmin) return true;
   return app.viewZone===app.supervisor.username;
 }
@@ -3408,23 +3424,34 @@ function openCargarVisita(localName){
   VF_PHOTOS=[];
   renderVFPhotoPreviews();
 
-  // Datalist de locales y direcciones
+  // Datalist de locales y direcciones (combina visitados + base asignada)
   const dl=document.getElementById('vf-local-list');
-  const existingLocals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))].sort();
+  const existingLocals=[...new Set([
+    ...app.raw.map(r=>r['Local']).filter(Boolean),
+    ...(app._localesBase||[]).map(l=>l.local).filter(Boolean)
+  ])].sort();
   dl.innerHTML=existingLocals.map(l=>`<option value="${esc(l)}">`).join('');
   const dlU=document.getElementById('vf-ubic-list');
-  const existingUbics=[...new Set(app.raw.map(r=>r['Ubicación']||r['Ubicacion']).filter(Boolean))].sort();
+  const existingUbics=[...new Set([
+    ...app.raw.map(r=>r['Ubicación']||r['Ubicacion']).filter(Boolean),
+    ...(app._localesBase||[]).map(l=>l.ubicacion).filter(Boolean)
+  ])].sort();
   dlU.innerHTML=existingUbics.map(u=>`<option value="${esc(u)}">`).join('');
 
   // Pre-llenar nombre
   const nameInp=document.getElementById('vf-local');
   nameInp.value=localName||'';
 
-  // Pre-llenar dirección si el local ya existe
+  // Pre-llenar dirección si el local ya existe (visitado o de la base asignada)
   const ubicInp=document.getElementById('vf-ubic');
   if(localName){
     const row=app.raw.find(r=>r['Local']===localName);
-    ubicInp.value=row?(row['Ubicación']||row['Ubicacion']||''):'';
+    if(row){
+      ubicInp.value=row['Ubicación']||row['Ubicacion']||'';
+    } else {
+      const base=(app._localesBase||[]).find(l=>l.local===localName);
+      ubicInp.value=base?(base.ubicacion||''):'';
+    }
   } else {
     ubicInp.value='';
     setTimeout(()=>nameInp.focus(),100);
@@ -3554,7 +3581,9 @@ function vfLocalChange(){
   const name=document.getElementById('vf-local').value.trim();
   if(!name) return;
   const row=app.raw.find(r=>r['Local']===name);
-  if(row) document.getElementById('vf-ubic').value=row['Ubicación']||row['Ubicacion']||'';
+  if(row){ document.getElementById('vf-ubic').value=row['Ubicación']||row['Ubicacion']||''; return; }
+  const base=(app._localesBase||[]).find(l=>l.local===name);
+  if(base) document.getElementById('vf-ubic').value=base.ubicacion||'';
 }
 
 function vfUbicChange(){
@@ -3563,7 +3592,9 @@ function vfUbicChange(){
   const localInp=document.getElementById('vf-local');
   if(localInp.value.trim()) return; // si ya tiene local, no pisar
   const row=app.raw.find(r=>(r['Ubicación']||r['Ubicacion']||'')===ubic);
-  if(row) localInp.value=row['Local']||'';
+  if(row){ localInp.value=row['Local']||''; return; }
+  const base=(app._localesBase||[]).find(l=>l.ubicacion===ubic);
+  if(base) localInp.value=base.local||'';
 }
 
 const VF_DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];

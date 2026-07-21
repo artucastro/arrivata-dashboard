@@ -221,6 +221,15 @@ function doGet(e) {
     return ContentService.createTextOutput(lines.join('\n')).setMimeType(ContentService.MimeType.CSV);
   }
 
+  // ── Locales base de un supervisor (para autocompletar Nueva Visita) ──
+  if (action === 'getLocalesBase') {
+    const supervisorParam = e.parameter.supervisor || '';
+    const val = _props().getProperty('localesbase|' + supervisorParam);
+    let locales = [];
+    if (val) { try { locales = JSON.parse(val); } catch (_) {} }
+    return _ok({ ok: true, locales: locales });
+  }
+
   // ── Datos de locales ──────────────────────────────────────
   if (action === 'getLocalData') {
     const all = _props().getProperties();
@@ -280,6 +289,15 @@ function doPost(e) {
       var existing = [];
       try { existing = JSON.parse(PropertiesService.getScriptProperties().getProperty(key) || '[]'); } catch (_) {}
       PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(existing.concat(urls)));
+      return _ok();
+    }
+
+    // ── Guardar locales base de un supervisor (autocompletado) ──
+    if (data.action === 'saveLocalesBase') {
+      const resolved = _resolveTarget(data);
+      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      PropertiesService.getScriptProperties().setProperty(
+        'localesbase|' + resolved.targetUsername, JSON.stringify(data.locales || []));
       return _ok();
     }
 
