@@ -129,10 +129,18 @@ function _applyTemplateStyle(targetSheet, numCols) {
     targetSheet.setColumnWidth(i, template.getColumnWidth(i));
   }
 
-  // Filtro en el header para poder filtrar por FECHA, Día, Local, Ubicación, etc.
-  const existingFilter = targetSheet.getFilter();
+  // NOTA: antes acá se creaba un Filter con createFilter(), pero un Filter
+  // activo rompe sheet.appendRow() (queda en no-op sin error) y además puede
+  // ocultar filas nuevas si le queda algún criterio aplicado sin querer desde
+  // la UI de Sheets. No lo creamos más — quien quiera filtrar puede crear uno
+  // manualmente desde Datos → Crear un filtro.
+  _removeFilterIfAny(targetSheet);
+}
+
+// Saca cualquier Filter activo de la hoja (ver nota en _applyTemplateStyle).
+function _removeFilterIfAny(sheet) {
+  const existingFilter = sheet.getFilter();
   if (existingFilter) existingFilter.remove();
-  targetSheet.getRange(1, 1, targetSheet.getMaxRows(), numCols).createFilter();
 }
 
 // Junta filas (con encabezado FECHA) de un spreadsheet en canonHeaders/dataRows (por referencia).
@@ -191,6 +199,7 @@ function doGet(e) {
     const hoja = template.copyTo(nuevo);
     hoja.setName(template.getName());
     nuevo.deleteSheet(hojaDefault);
+    _removeFilterIfAny(hoja); // copyTo clona un Filter del template si tiene — rompe appendRow y puede ocultar filas
 
     const clearResult = _clearDataRows(hoja);
     return _ok({
@@ -440,6 +449,24 @@ function doGet(e) {
       ok: true, before: before, afterWrite: afterWrite, afterFlush: afterFlush,
       writeErr: writeErr, values: values, driveInfo: driveInfo
     });
+  }
+
+  // ── Sacar el Filter de un spreadsheet ya existente (solo admin) ──
+  // Un Filter activo rompe appendRow y puede ocultar filas si le queda
+  // algún criterio aplicado. Recorre todas las pestañas y lo saca.
+  if (action === 'removeFilter') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const spreadsheetId = e.parameter.spreadsheetId || '';
+    if (!spreadsheetId) return _ok({ ok: false, error: 'Falta spreadsheetId' });
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const result = ss.getSheets().map(function (sh) {
+      const had = !!sh.getFilter();
+      _removeFilterIfAny(sh);
+      return { sheet: sh.getName(), hadFilter: had };
+    });
+    return _ok({ ok: true, sheets: result });
   }
 
   // ── DEBUG temporal: último error de doPost ────────────────────
