@@ -152,11 +152,19 @@
     .det-stats-grid  { grid-template-columns:repeat(2,1fr) !important; }
 
     /* Navbar */
-    .nav-inner   { padding:0 14px !important; height:54px !important; }
-    .nav-logo    { height:36px !important; }
+    .nav-inner   { padding:0 10px !important; height:54px !important; }
+    .nav-logo    { height:32px !important; }
     .nav-sub     { display:none !important; }
     .nav-sync    { display:none !important; }
     .nav-btn-lbl { display:none !important; }
+
+    /* Demasiados botones de acción para el ancho de un celular — en vez de
+       superponerse con el logo (ver nav-actions.min-width:0 de abajo), se
+       vuelven una tira horizontal scrolleable. "Nueva Visita" queda primera
+       (justo después del login/avatar) para no depender del scroll. */
+    .nav-actions { flex:1 1 auto; min-width:0; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; justify-content:flex-start; }
+    .nav-actions::-webkit-scrollbar { display:none; }
+    .nav-actions > * { flex-shrink:0; }
 
     /* Main padding */
     .main-pad    { padding:14px !important; }
@@ -507,7 +515,7 @@
 <!-- ── NAVBAR ────────────────────────────────────────────────── -->
 <nav style="background:#fff;border-bottom:3px solid var(--red);position:sticky;top:0;z-index:40;box-shadow:0 2px 8px rgba(139,23,20,.10)">
   <div class="nav-inner" style="max-width:1400px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between">
-    <div style="display:flex;align-items:center;gap:14px">
+    <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
       <button id="sidebar-toggle" onclick="toggleSidebarMobile()" style="width:34px;height:34px;border-radius:8px;border:1.5px solid var(--border);background:#fff;cursor:pointer;flex-shrink:0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
@@ -517,7 +525,7 @@
         <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em;margin-top:1px">en Góndola</div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
+    <div class="nav-actions" style="display:flex;align-items:center;gap:6px">
       <button id="nav-login-btn" class="btn btn-ghost" onclick="iniciarSesion()" style="padding:6px 10px;font-size:.8rem;margin-right:4px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
         <span class="nav-btn-lbl">Iniciar sesión</span>
@@ -529,6 +537,10 @@
         </div>
         <div id="nav-sup-avatar" style="width:32px;height:32px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0"></div>
       </div>
+      <button id="btn-nueva-visita-nav" class="btn" onclick="abrirVerificacion('cargarVisita',null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="nav-btn-lbl">Nueva Visita</span>
+      </button>
       <span id="sync-label" class="nav-sync" style="font-size:.7rem;color:var(--muted)"></span>
       <button class="btn btn-ghost" onclick="loadData()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
@@ -545,10 +557,6 @@
       <button class="btn btn-ghost" onclick="exportarReporte()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="nav-btn-lbl">Exportar</span>
-      </button>
-      <button id="btn-nueva-visita-nav" class="btn" onclick="abrirVerificacion('cargarVisita',null)" style="padding:6px 10px;font-size:.8rem;background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span class="nav-btn-lbl">Nueva Visita</span>
       </button>
       <button class="btn btn-blue" onclick="openModal()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
