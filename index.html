@@ -36,6 +36,11 @@
   #app-sidebar .sb-item .sb-name { font-size:.82rem; font-weight:700; color:var(--text); }
   #app-sidebar .sb-item .sb-sub { font-size:.68rem; color:var(--muted); }
   #app-sidebar .sb-divider { height:1px; background:var(--border); margin:10px 0; }
+  #app-sidebar .sb-action-item { display:flex; align-items:center; gap:10px; padding:10px 16px; cursor:pointer; font-size:.85rem; color:var(--text); }
+  #app-sidebar .sb-action-item:hover { background:var(--cream); }
+  #app-sidebar .sb-action-item svg { flex-shrink:0; color:var(--muted); }
+  .sb-mobile-only { display:none; }
+  #nav-zone-pills { display:none; }
   #sidebar-toggle { display:none; }
   #sidebar-overlay { display:none; }
 
@@ -144,6 +149,9 @@
     #app-sidebar.open { transform:translateX(0); }
     #sidebar-toggle { display:flex !important; align-items:center; justify-content:center; }
     #sidebar-overlay.open { display:block; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:44; }
+    /* En mobile el hamburger abre el menú de acciones, no la lista de zonas */
+    .sb-desktop-only { display:none !important; }
+    .sb-mobile-only  { display:block !important; }
 
     .charts-grid     { grid-template-columns:1fr !important; }
     .stats-grid      { grid-template-columns:repeat(3,1fr) !important; }
@@ -158,13 +166,15 @@
     .nav-sync    { display:none !important; }
     .nav-btn-lbl { display:none !important; }
 
-    /* Demasiados botones de acción para el ancho de un celular — en vez de
-       superponerse con el logo (ver nav-actions.min-width:0 de abajo), se
-       vuelven una tira horizontal scrolleable. "Nueva Visita" queda primera
-       (justo después del login/avatar) para no depender del scroll. */
-    .nav-actions { flex:1 1 auto; min-width:0; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; justify-content:flex-start; }
-    .nav-actions::-webkit-scrollbar { display:none; }
-    .nav-actions > * { flex-shrink:0; }
+    /* En mobile el hamburger abre el menú de acciones (ver #app-sidebar
+       .sb-mobile-only) en vez de la lista de zonas, así que acá solo queda
+       "Nueva Visita" visible — el resto de los botones se ocultan (.hide-sm)
+       y las zonas se muestran como pills scrolleables (#nav-zone-pills). */
+    .nav-actions      { flex-shrink:0; }
+    #nav-zone-pills   { display:flex; align-items:center; gap:6px; flex:1 1 auto; min-width:0; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding:0 8px; }
+    #nav-zone-pills::-webkit-scrollbar { display:none; }
+    #nav-zone-pills .zpill { flex-shrink:0; white-space:nowrap; padding:5px 11px; border-radius:999px; font-size:.76rem; font-weight:700; border:1.5px solid var(--border); background:#fff; color:var(--muted); cursor:pointer; }
+    #nav-zone-pills .zpill.active { background:var(--red); border-color:var(--red); color:#fff; }
 
     /* Main padding */
     .main-pad    { padding:14px !important; }
@@ -231,11 +241,54 @@
 </head>
 <body>
 
-<!-- ── SIDEBAR DE SUPERVISORES ───────────────────────────────── -->
+<!-- ── SIDEBAR DE SUPERVISORES (desktop) / MENÚ DE ACCIONES (mobile) ──
+     En desktop esta barra siempre está visible y lista zonas/supervisores.
+     En mobile, el hamburger abre esta misma barra pero con las acciones
+     que en desktop viven en la navbar horizontal (Iniciar sesión, Actualizar,
+     Locales, Agenda, Exportar, Configurar) — las zonas pasan a mostrarse como
+     pills en la navbar horizontal (#nav-zone-pills) en mobile. -->
 <div id="sidebar-overlay" onclick="closeSidebarMobile()"></div>
 <aside id="app-sidebar">
-  <div class="sb-title">Vista</div>
-  <div id="sb-list"></div>
+  <div class="sb-desktop-only">
+    <div class="sb-title">Vista</div>
+    <div id="sb-list"></div>
+  </div>
+  <div class="sb-mobile-only">
+    <div class="sb-title">Menú</div>
+    <div id="sb-login-item" class="sb-action-item" onclick="iniciarSesion();closeSidebarMobile();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      <span>Iniciar sesión</span>
+    </div>
+    <div id="sb-profile-item" class="sb-action-item" style="display:none" onclick="openModal();closeSidebarMobile();">
+      <div id="sb-profile-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.78rem;flex-shrink:0"></div>
+      <div>
+        <div id="sb-profile-nombre" style="font-weight:700"></div>
+        <div id="sb-profile-zona" class="sb-sub"></div>
+      </div>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-action-item" onclick="loadData();closeSidebarMobile();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      <span>Actualizar</span>
+    </div>
+    <div class="sb-action-item" onclick="openLocales();closeSidebarMobile();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span>Locales</span>
+    </div>
+    <div class="sb-action-item" onclick="openAgenda();closeSidebarMobile();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span>Agenda</span>
+    </div>
+    <div class="sb-action-item" onclick="exportarReporte();closeSidebarMobile();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>Exportar</span>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-action-item" onclick="openModal();closeSidebarMobile();">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span>Configurar</span>
+    </div>
+  </div>
 </aside>
 
 <!-- ── LOGIN PAGE ────────────────────────────────────────────── -->
@@ -525,12 +578,15 @@
         <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em;margin-top:1px">en Góndola</div>
       </div>
     </div>
+    <!-- Solo mobile: pills de zona (reemplazan la barra lateral, que en mobile
+         ahora abre el menú de acciones — ver #app-sidebar .sb-mobile-only) -->
+    <div id="nav-zone-pills"></div>
     <div class="nav-actions" style="display:flex;align-items:center;gap:6px">
-      <button id="nav-login-btn" class="btn btn-ghost" onclick="iniciarSesion()" style="padding:6px 10px;font-size:.8rem;margin-right:4px">
+      <button id="nav-login-btn" class="btn btn-ghost hide-sm" onclick="iniciarSesion()" style="padding:6px 10px;font-size:.8rem;margin-right:4px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
         <span class="nav-btn-lbl">Iniciar sesión</span>
       </button>
-      <div id="nav-supervisor" style="display:none;align-items:center;gap:8px;margin-right:4px">
+      <div id="nav-supervisor" class="hide-sm" style="display:none;align-items:center;gap:8px;margin-right:4px">
         <div style="text-align:right">
           <div id="nav-sup-nombre" style="font-size:.78rem;font-weight:700;color:var(--text);line-height:1.2"></div>
           <div id="nav-sup-zona" style="font-size:.65rem;color:var(--muted)"></div>
@@ -542,23 +598,23 @@
         <span class="nav-btn-lbl">Nueva Visita</span>
       </button>
       <span id="sync-label" class="nav-sync" style="font-size:.7rem;color:var(--muted)"></span>
-      <button class="btn btn-ghost" onclick="loadData()" style="padding:6px 10px;font-size:.8rem">
+      <button class="btn btn-ghost hide-sm" onclick="loadData()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         <span class="nav-btn-lbl">Actualizar</span>
       </button>
-      <button class="btn btn-ghost" onclick="openLocales()" style="padding:6px 10px;font-size:.8rem">
+      <button class="btn btn-ghost hide-sm" onclick="openLocales()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <span class="nav-btn-lbl">Locales</span>
       </button>
-      <button class="btn btn-ghost" onclick="openAgenda()" style="padding:6px 10px;font-size:.8rem">
+      <button class="btn btn-ghost hide-sm" onclick="openAgenda()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <span class="nav-btn-lbl">Agenda</span>
       </button>
-      <button class="btn btn-ghost" onclick="exportarReporte()" style="padding:6px 10px;font-size:.8rem">
+      <button class="btn btn-ghost hide-sm" onclick="exportarReporte()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="nav-btn-lbl">Exportar</span>
       </button>
-      <button class="btn btn-blue" onclick="openModal()" style="padding:6px 10px;font-size:.8rem">
+      <button class="btn btn-blue hide-sm" onclick="openModal()" style="padding:6px 10px;font-size:.8rem">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         <span class="nav-btn-lbl">Configurar</span>
       </button>
@@ -1148,16 +1204,29 @@ function refreshNavSupervisor(){
   const sup=app.supervisor;
   const el=document.getElementById('nav-supervisor');
   const loginBtn=document.getElementById('nav-login-btn');
+  // Equivalentes en el menú de acciones mobile (ver #app-sidebar .sb-mobile-only)
+  const sbLoginItem=document.getElementById('sb-login-item');
+  const sbProfileItem=document.getElementById('sb-profile-item');
   if(!sup||!sup.name){
     if(el) el.style.display='none';
     if(loginBtn) loginBtn.style.display='flex';
+    if(sbProfileItem) sbProfileItem.style.display='none';
+    if(sbLoginItem) sbLoginItem.style.display='flex';
     return;
   }
   if(loginBtn) loginBtn.style.display='none';
   if(el) el.style.display='flex';
+  if(sbLoginItem) sbLoginItem.style.display='none';
+  if(sbProfileItem) sbProfileItem.style.display='flex';
   document.getElementById('nav-sup-nombre').textContent=sup.name;
   document.getElementById('nav-sup-zona').textContent=sup.zona||'';
   document.getElementById('nav-sup-avatar').textContent=sup.name.charAt(0).toUpperCase();
+  const sbNombre=document.getElementById('sb-profile-nombre');
+  const sbZona=document.getElementById('sb-profile-zona');
+  const sbAvatar=document.getElementById('sb-profile-avatar');
+  if(sbNombre) sbNombre.textContent=sup.name;
+  if(sbZona) sbZona.textContent=sup.zona||'';
+  if(sbAvatar) sbAvatar.textContent=sup.name.charAt(0).toUpperCase();
   // Actualizar subtítulo exportar con zona
   const sub=document.getElementById('export-subtitle');
   if(sub&&sup.zona) sub.textContent=sup.zona;
@@ -1656,6 +1725,13 @@ function renderSidebar(){
   html+='<div class="sb-divider"></div>';
   html+=sups.map(s=>itemHtml(s.username, s.name, s.zona||'', s.username===myUser)).join('');
   list.innerHTML=html;
+
+  // Pills de zona en la navbar mobile (mismo dato, forma compacta)
+  const pills=document.getElementById('nav-zone-pills');
+  if(pills){
+    const pillHtml=(value,label)=>`<button type="button" class="zpill${app.viewZone===value?' active':''}" onclick="selectZone('${esc(value)}')">${esc(label)}</button>`;
+    pills.innerHTML=pillHtml('all','Global')+sups.map(s=>pillHtml(s.username,s.name)).join('');
+  }
 }
 
 function selectZone(value){
