@@ -69,6 +69,72 @@ function _openSpreadsheetForSupervisor(sup) {
   return SpreadsheetApp.getActiveSpreadsheet(); // fallback legacy
 }
 
+// Encuentra la fila de encabezado FECHA en una hoja. Devuelve {headers, hIdx} o null.
+function _findHeaderRow(sheet) {
+  const values = sheet.getDataRange().getValues();
+  const hIdx = values.findIndex(function (r) {
+    return String(r[0]).trim().toUpperCase() === 'FECHA';
+  });
+  if (hIdx === -1) return null;
+  return { headers: values[hIdx], hIdx: hIdx };
+}
+
+// Borra el contenido (valores Y fórmulas) de las filas de datos de una hoja,
+// dejando el header intacto. Hace flush() y relee para confirmar que
+// realmente quedó vacío (por si alguna fórmula tipo IMPORTRANGE la repuebla).
+function _clearDataRows(sheet) {
+  const found = _findHeaderRow(sheet);
+  if (!found) return { cleared: false, reason: 'sin header FECHA' };
+  const lastRow = sheet.getLastRow();
+  const dataStart = found.hIdx + 2; // 1-indexed, fila siguiente al header
+  const numCols = Math.max(found.headers.length, sheet.getLastColumn());
+  const rowsFound = Math.max(0, lastRow - dataStart + 1);
+  if (rowsFound > 0) {
+    sheet.getRange(dataStart, 1, rowsFound, numCols).clearContent();
+  }
+  SpreadsheetApp.flush();
+  const after = sheet.getDataRange().getValues();
+  const stillHasData = after.slice(found.hIdx + 1).some(function (r) { return String(r[0]).trim() !== ''; });
+  return { cleared: true, rowsFound: rowsFound, stillHasData: stillHasData };
+}
+
+// Copia el estilo visual (formato de celda, fila congelada, ancho de columnas)
+// del header del sheet plantilla (tu propio spreadsheet) a la hoja de un
+// supervisor, para que todos los spreadsheets se vean iguales.
+// Nota: Range.copyTo() de Apps Script NO funciona entre spreadsheets distintos
+// (tira "El intervalo de destino y de origen deben estar en la misma hoja de
+// cálculo"), así que copiamos cada propiedad de estilo por separado — esas
+// sí devuelven/aceptan valores planos, cruzan spreadsheets sin problema.
+function _applyTemplateStyle(targetSheet, numCols) {
+  const template = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  const found = _findHeaderRow(template);
+  const templateHeaderRow = found ? found.hIdx + 1 : 1;
+  const src = template.getRange(templateHeaderRow, 1, 1, numCols);
+  const dst = targetSheet.getRange(1, 1, 1, numCols);
+
+  dst.setFontWeights(src.getFontWeights());
+  dst.setFontStyles(src.getFontStyles());
+  dst.setFontLines(src.getFontLines());
+  dst.setFontColors(src.getFontColors());
+  dst.setFontSizes(src.getFontSizes());
+  dst.setFontFamilies(src.getFontFamilies());
+  dst.setBackgrounds(src.getBackgrounds());
+  dst.setHorizontalAlignments(src.getHorizontalAlignments());
+  dst.setVerticalAlignments(src.getVerticalAlignments());
+  dst.setWraps(src.getWraps());
+  dst.setNumberFormats(src.getNumberFormats());
+
+  targetSheet.setFrozenRows(1); // solo la fila 1 (header) queda fija al bajar
+  for (let i = 1; i <= numCols; i++) {
+    targetSheet.setColumnWidth(i, template.getColumnWidth(i));
+  }
+
+  // Filtro en el header para poder filtrar por FECHA, Día, Local, Ubicación, etc.
+  const existingFilter = targetSheet.getFilter();
+  if (existingFilter) existingFilter.remove();
+  targetSheet.getRange(1, 1, targetSheet.getMaxRows(), numCols).createFilter();
+}
+
 // Junta filas (con encabezado FECHA) de un spreadsheet en canonHeaders/dataRows (por referencia).
 function _collectRowsFromSpreadsheet(ss, sheetName, canonHeaders, dataRows) {
   const sheets = sheetName
@@ -115,19 +181,56 @@ function doGet(e) {
     if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
-    const nuevo = SpreadsheetApp.create('Arrivata - ' + (e.parameter.nombre || 'Supervisor'));
-    const hoja = nuevo.getSheets()[0];
     const template = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-    const templateValues = template.getDataRange().getValues();
-    const hIdx = templateValues.findIndex(function (r) {
-      return String(r[0]).trim().toUpperCase() === 'FECHA';
+    const nuevo = SpreadsheetApp.create('Arrivata - ' + (e.parameter.nombre || 'Supervisor'));
+    const hojaDefault = nuevo.getSheets()[0]; // la hoja en blanco que Google crea sola
+
+    // Clon exacto de la hoja plantilla (formato, validaciones, todo) — a
+    // diferencia de Range.copyTo(), Sheet.copyTo() SÍ funciona entre
+    // spreadsheets distintos.
+    const hoja = template.copyTo(nuevo);
+    hoja.setName(template.getName());
+    nuevo.deleteSheet(hojaDefault);
+
+    const clearResult = _clearDataRows(hoja);
+    return _ok({
+      ok: true, spreadsheetId: nuevo.getId(), url: nuevo.getUrl(), sheetName: hoja.getName(),
+      clear: clearResult
     });
-    const headers = hIdx !== -1
-      ? templateValues[hIdx]
-      : ['FECHA', 'Día', 'Local', 'Ubicación', 'Supervisor'];
-    hoja.getRange(1, 1, 1, headers.length).setValues([headers]);
-    hoja.setName('Visitas');
-    return _ok({ ok: true, spreadsheetId: nuevo.getId(), url: nuevo.getUrl(), sheetName: hoja.getName() });
+  }
+
+  // ── Aplicar el estilo visual del template a un spreadsheet ya existente ──
+  // (solo admin) — para "poner al día" spreadsheets creados antes de este cambio.
+  if (action === 'restyleSheet') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const sup = _getSupervisorRaw(e.parameter.supervisor || '');
+    if (!sup || !sup.spreadsheetId) return _ok({ ok: false, error: 'Supervisor sin spreadsheet asignado' });
+    const ss = SpreadsheetApp.openById(sup.spreadsheetId);
+    const sheet = (sup.sheetName && ss.getSheetByName(sup.sheetName)) || ss.getSheets()[0];
+    const found = _findHeaderRow(sheet);
+    const numCols = found ? found.headers.length : sheet.getLastColumn();
+    _applyTemplateStyle(sheet, numCols);
+    return _ok({ ok: true });
+  }
+
+  // ── Borrar todas las filas de datos (dejando el header) de un spreadsheet ──
+  // (solo admin) — recorre TODAS las pestañas y devuelve el detalle de lo
+  // que borró en cada una, para poder verificar sin adivinar.
+  if (action === 'clearVisitRows') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const spreadsheetId = e.parameter.spreadsheetId || '';
+    if (!spreadsheetId) return _ok({ ok: false, error: 'Falta spreadsheetId' });
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const result = ss.getSheets().map(function (sh) {
+      const r = _clearDataRows(sh);
+      r.sheet = sh.getName();
+      return r;
+    });
+    return _ok({ ok: true, sheets: result });
   }
 
   // ── Lista de supervisores (para el sidebar y panel admin) ──
@@ -242,6 +345,112 @@ function doGet(e) {
     return _ok({ ok: true, localData });
   }
 
+  // ── DEBUG temporal: ver la config cruda de un supervisor (solo admin) ──
+  if (action === 'getSupervisorDebug') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const sup = _getSupervisorRaw(e.parameter.supervisor || '');
+    if (!sup) return _ok({ ok: false, error: 'Supervisor no encontrado' });
+    let sheetInfo = null;
+    try {
+      const ss = _openSpreadsheetForSupervisor(sup);
+      const sheet = (sup.sheetName && ss.getSheetByName(sup.sheetName)) || ss.getSheets()[0];
+      const found = _findHeaderRow(sheet);
+      sheetInfo = {
+        spreadsheetName: ss.getName(), spreadsheetUrl: ss.getUrl(),
+        sheetUsedForWrite: sheet.getName(), lastRow: sheet.getLastRow(),
+        headerFound: !!found, headers: found ? found.headers : null
+      };
+    } catch (err) {
+      sheetInfo = { error: err.message };
+    }
+    return _ok({ ok: true, sup: sup, sheetInfo: sheetInfo });
+  }
+
+  // ── DEBUG temporal: contenido/fórmulas crudas de las primeras filas ──
+  if (action === 'getSheetRaw') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const sup = _getSupervisorRaw(e.parameter.supervisor || '');
+    if (!sup) return _ok({ ok: false, error: 'Supervisor no encontrado' });
+    const ss = _openSpreadsheetForSupervisor(sup);
+    const sheet = (sup.sheetName && ss.getSheetByName(sup.sheetName)) || ss.getSheets()[0];
+    const numRows = Math.min(sheet.getLastRow() + 3, sheet.getMaxRows());
+    const numCols = Math.min(sheet.getLastColumn(), 6);
+    const range = sheet.getRange(1, 1, numRows, numCols);
+    return _ok({
+      ok: true, sheetName: sheet.getName(), maxRows: sheet.getMaxRows(), lastRow: sheet.getLastRow(),
+      values: range.getValues(), formulas: range.getFormulas()
+    });
+  }
+
+  // ── DEBUG temporal: triggers instalados en el proyecto ────────
+  if (action === 'getTriggers') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const triggers = ScriptApp.getProjectTriggers().map(function (t) {
+      return {
+        handlerFunction: t.getHandlerFunction(),
+        eventType: String(t.getEventType()),
+        triggerSource: String(t.getTriggerSource())
+      };
+    });
+    return _ok({ ok: true, triggers: triggers });
+  }
+
+  // ── DEBUG temporal: guarda y relee al toque, para ver si algo pisa entre medio ──
+  if (action === 'testWriteReadNow') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const sup = _getSupervisorRaw(e.parameter.supervisor || '');
+    if (!sup) return _ok({ ok: false, error: 'Supervisor no encontrado' });
+    const ss = _openSpreadsheetForSupervisor(sup);
+    const sheet = (sup.sheetName && ss.getSheetByName(sup.sheetName)) || ss.getSheets()[0];
+    const before = sheet.getLastRow();
+    let writeErr = null;
+    try {
+      sheet.getRange(before + 1, 1, 1, 5).setValues([['DEBUG-INLINE', '', 'DEBUG-LOCAL', 'DEBUG-UBIC', '99']]);
+    } catch (err) {
+      writeErr = err.message;
+    }
+    const afterWrite = sheet.getLastRow();
+    SpreadsheetApp.flush();
+    const afterFlush = sheet.getLastRow();
+    const values = sheet.getRange(1, 1, Math.max(afterFlush, before + 1), 5).getValues();
+
+    let driveInfo = null;
+    try {
+      const file = DriveApp.getFileById(ss.getId());
+      driveInfo = {
+        effectiveUser: Session.getEffectiveUser().getEmail(),
+        activeUser: (function () { try { return Session.getActiveUser().getEmail(); } catch (_) { return '(sin acceso)'; } })(),
+        fileOwner: file.getOwner() ? file.getOwner().getEmail() : '(desconocido)',
+        access: String(file.getSharingAccess()), permission: String(file.getSharingPermission()),
+        editors: file.getEditors().map(function (u) { return u.getEmail(); })
+      };
+    } catch (err) {
+      driveInfo = { error: err.message };
+    }
+
+    return _ok({
+      ok: true, before: before, afterWrite: afterWrite, afterFlush: afterFlush,
+      writeErr: writeErr, values: values, driveInfo: driveInfo
+    });
+  }
+
+  // ── DEBUG temporal: último error de doPost ────────────────────
+  if (action === 'getDebugLog') {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+      return _ok({ ok: false, error: 'No autorizado' });
+    }
+    const raw = _props().getProperty('debug|lastError');
+    return _ok({ ok: true, log: raw ? JSON.parse(raw) : null });
+  }
+
   return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
 }
 
@@ -350,13 +559,23 @@ function doPost(e) {
         return '';
       });
 
-      sheet.appendRow(row);
+      // sheet.appendRow() falla silenciosamente en hojas con un Filter activo
+      // (las creadas por _applyTemplateStyle) — no tira error ni agrega fila.
+      // setValues() en la fila calculada sí persiste.
+      const targetRow = sheet.getLastRow() + 1;
+      sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
       return _ok();
     }
 
     return _ok({ ok: false, error: 'Acción desconocida' });
 
   } catch (err) {
+    try {
+      _props().setProperty('debug|lastError', JSON.stringify({
+        time: new Date().toString(), action: (JSON.parse(e.postData.contents) || {}).action,
+        error: err.message, stack: err.stack || ''
+      }));
+    } catch (_) {}
     return _ok({ ok: false, error: err.message });
   }
 }
