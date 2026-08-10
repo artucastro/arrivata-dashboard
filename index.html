@@ -431,7 +431,7 @@
       </div>
       <div id="vf-products"></div>
       <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
-        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos de góndola <span style="font-weight:400">(opcional, máx 5)</span></label>
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos de góndola <span style="font-weight:400">(opcional, máx 10)</span></label>
         <input type="file" id="vf-fotos" accept="image/*" multiple onchange="addVFPhotos(this)" style="display:none">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <button type="button" id="vf-foto-btn" onclick="document.getElementById('vf-fotos').click()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px dashed var(--border);border-radius:8px;background:#FFFDF8;color:var(--muted);cursor:pointer;font-size:.8rem;font-weight:700">
@@ -661,7 +661,7 @@
 
     <!-- Stats -->
     <div class="stats-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px">
-      <div class="card stat-card" style="padding:16px">
+      <div class="card stat-card" onclick="verTodasLasVisitas()" title="Ver el listado de estas visitas" style="padding:16px;cursor:pointer">
         <div style="width:36px;height:36px;border-radius:9px;background:#F9EDED;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B1714" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </div>
@@ -779,7 +779,7 @@
     </div>
 
     <!-- Table -->
-    <div class="card" style="margin-bottom:22px">
+    <div id="tbl-section" class="card" style="margin-bottom:22px">
       <div class="tbl-toolbar" style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
         <div class="tbl-toolbar-left">
           <span style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Locales</span>
@@ -2055,6 +2055,14 @@ function renderTable(){
 function prevPage(){ if(app.page>1){ app.page--; renderTable(); } }
 function nextPage(){ const max=Math.ceil(getFiltered().length/app.pageSize); if(app.page<max){ app.page++; renderTable(); } }
 function clearFilters(){ document.getElementById('srch').value=''; document.getElementById('f-zona').value=''; document.getElementById('f-arrivata').value=''; cselSync('f-zona'); cselSync('f-arrivata'); app.page=1; renderTable(); }
+
+// Tocar la tarjeta "Visitas" (en Global o en la página de cualquier
+// supervisor) baja a la tabla de Locales con los mismos filtros limpios,
+// mostrando exactamente las visitas que componen ese número.
+function verTodasLasVisitas(){
+  clearFilters();
+  document.getElementById('tbl-section').scrollIntoView({behavior:'smooth', block:'start'});
+}
 
 // ── Faltantes por producto (última visita de cada local) ───────
 function getLastVisitByLocal(){
@@ -3412,10 +3420,12 @@ function compressImage(file){
   });
 }
 
+const MAX_FOTOS_VISITA=10;
+
 async function addVFPhotos(input){
-  const files=[...input.files].slice(0,5-VF_PHOTOS.length);
+  const files=[...input.files].slice(0,MAX_FOTOS_VISITA-VF_PHOTOS.length);
   for(const file of files){
-    if(VF_PHOTOS.length>=5) break;
+    if(VF_PHOTOS.length>=MAX_FOTOS_VISITA) break;
     const dataUrl=await compressImage(file);
     VF_PHOTOS.push({name:file.name,dataUrl});
   }
@@ -3432,7 +3442,7 @@ function renderVFPhotoPreviews(){
       <button onclick="removeVFPhoto(${i})" style="position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:none;cursor:pointer;font-size:.65rem;line-height:18px;text-align:center;padding:0">&#x2715;</button>
     </div>`).join('');
   const btn=document.getElementById('vf-foto-btn');
-  if(btn) btn.style.display=VF_PHOTOS.length>=5?'none':'flex';
+  if(btn) btn.style.display=VF_PHOTOS.length>=MAX_FOTOS_VISITA?'none':'flex';
 }
 
 function removeVFPhoto(i){ VF_PHOTOS.splice(i,1); renderVFPhotoPreviews(); }
@@ -3809,7 +3819,7 @@ function renderVFProducts(){
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">SI</button>
           <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','no')" id="vf-no-${id}"
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">NO</button>
-          <input type="text" inputmode="text" id="vf-qty-${id}" data-vid="${id}"
+          <input type="text" inputmode="numeric" id="vf-qty-${id}" data-vid="${id}"
             placeholder="cant." oninput="VF_QTY[this.dataset.vid]=this.value"
             style="width:60px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:.82rem;display:none">
         </div>`;
