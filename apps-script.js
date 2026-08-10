@@ -13,7 +13,8 @@
 // spreadsheet (campo `spreadsheetId`). Este script sigue viviendo
 // en un único proyecto (el mismo de siempre, mismo deployment/URL)
 // pero abre el spreadsheet de cada supervisor por ID en vez de
-// operar siempre sobre el spreadsheet donde está bindeado.
+// operar siempre sobre el spreadsheet
+//  donde está bindeado.
 //
 // Contrato de las acciones que escriben datos (doPost): siempre
 // viajan `username` + `password` del usuario autenticado que hace
@@ -495,6 +496,42 @@ function doPost(e) {
       const targetRow = sheet.getLastRow() + 1;
       sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
       return _ok();
+    }
+
+    // ── Reportes con IA: proxy a Anthropic (solo supervisores identificados) ──
+    // La API key vive acá (Propiedades del script → ANTHROPIC_API_KEY), nunca
+    // en el navegador. Antes el dashboard le pegaba directo a Anthropic con la
+    // key guardada en localStorage — visible para cualquiera con acceso al
+    // navegador. Ahora el navegador solo manda el prompt; este proxy hace la
+    // llamada real y devuelve la respuesta de Anthropic tal cual.
+    if (data.action === 'callClaude') {
+      const actor = _authSupervisor(data.username, data.password);
+      if (!actor) return _ok({ ok: false, error: 'Usuario o contraseña incorrectos' });
+      const apiKey = _props().getProperty('ANTHROPIC_API_KEY');
+      if (!apiKey) return _ok({ ok: false, error: 'Falta configurar la API key de Anthropic en el proyecto de Apps Script (Configuración del proyecto → Propiedades del script → ANTHROPIC_API_KEY).' });
+
+      const payload = {
+        model: 'claude-sonnet-5',
+        max_tokens: data.maxTokens || 2048,
+        messages: [{ role: 'user', content: data.content }]
+      };
+      const resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+      const status = resp.getResponseCode();
+      const body = resp.getContentText();
+      if (status < 200 || status >= 300) {
+        let errMsg = 'Error HTTP ' + status + ' de Anthropic';
+        try { const parsed = JSON.parse(body); if (parsed.error && parsed.error.message) errMsg = parsed.error.message; } catch (_) {}
+        return _ok({ ok: false, error: errMsg });
+      }
+      // Éxito: se devuelve la respuesta de Anthropic tal cual (mismo shape que
+      // esperaba el código del dashboard cuando llamaba directo a la API).
+      return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
     }
 
     return _ok({ ok: false, error: 'Acción desconocida' });

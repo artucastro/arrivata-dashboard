@@ -350,11 +350,6 @@
             <input id="inp-script" type="url" placeholder="https://script.google.com/macros/s/.../exec">
             <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Para guardar visitas, notas y fotos desde el dashboard</p>
           </div>
-          <div>
-            <label style="display:block;font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:5px">API Key de Anthropic <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
-            <input id="inp-key" type="password" placeholder="sk-ant-...">
-            <p style="font-size:.7rem;color:var(--muted);margin-top:4px">Solo para reportes con IA · console.anthropic.com</p>
-          </div>
         </div>
       </div>
       <!-- Admin: Gestión de supervisores -->
@@ -839,7 +834,7 @@
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
           <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Reporte con IA</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Análisis generado con Claude (Anthropic) · necesita API key</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Análisis generado con Claude (Anthropic) · requiere identificarte como supervisor</div>
         </div>
         <div class="report-btns" style="display:flex;gap:8px">
           <button id="btn-sem" class="btn btn-blue" onclick="generateReport('semanal')" style="font-size:.82rem">
@@ -892,11 +887,8 @@
           </div>
         </div>
       </div>
-      <div id="no-key-warn" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.82rem;color:#991b1b;margin-bottom:10px">
-        🔑 No hay API key configurada. Hacé clic en <strong>Configurar</strong> (engranaje arriba) e ingresá tu key de Anthropic para poder generar reportes.
-      </div>
       <div id="cors-warn" style="display:none;padding:10px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:.82rem;color:#92400e;margin-bottom:10px">
-        ⚠️ Error de red al conectar con Anthropic. Verificá tu conexión a internet y que la API key sea correcta.
+        ⚠️ Error de red al conectar con el servidor. Verificá tu conexión a internet e intentá de nuevo.
       </div>
       <div id="api-err-warn" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.82rem;color:#991b1b;margin-bottom:10px"></div>
       <div id="report-wrap" style="display:none;border-top:1px solid #f1f5f9;padding-top:14px">
@@ -1146,7 +1138,7 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7YngMX1SL90ubER-fQlXBaBJDGu1OK7a7Ks2easJHXuAtSJJDqp_UeLUSuUFw3iAy/exec';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPGzgrg9Jq8p9TtUsNnHYrjB2-gSYVpGXjqcfJvNwP_q92rAVvdhsz9qyL7bU1wFzlhw/exec';
 
 const BRAND_SUFFIXES = {
   ARRIVATA:  [' AR'],
@@ -1165,7 +1157,7 @@ const PROD_COLORS = [
 
 // ── State ────────────────────────────────────────────────────
 const app = {
-  cfg: { key: '', scriptUrl: DEFAULT_SCRIPT_URL },
+  cfg: { scriptUrl: DEFAULT_SCRIPT_URL },
   raw: [],
   brandCols: { ARRIVATA:[], FESTA:[], WAPI:[], CUISINE:[], CARREFOUR:[] },
   periodDays: 7,
@@ -1633,7 +1625,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if(sd) sd.value=cc.datos;
     if(st) st.value=cc.tipo;
   });
-  document.getElementById('inp-key').value = app.cfg.key || '';
   // Default custom range: last 30 days → today
   const toISO=d=>d.toISOString().slice(0,10);
   const _today=new Date();
@@ -1670,18 +1661,14 @@ function openModal(){
   }
 }
 function abrirConfigModal(sup){
-  document.getElementById('inp-key').value=app.cfg.key||'';
   document.getElementById('inp-script').value=app.cfg.scriptUrl||'';
   actualizarCfgPerfil(sup||app.supervisor);
   document.getElementById('modal').style.display='flex';
 }
 function closeModal(){ document.getElementById('modal').style.display='none'; }
 function saveAndLoad(){
-  app.cfg.key = document.getElementById('inp-key').value.trim();
   app.cfg.scriptUrl = document.getElementById('inp-script').value.trim() || DEFAULT_SCRIPT_URL;
   localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
-  const noKeyEl=document.getElementById('no-key-warn');
-  if(noKeyEl) noKeyEl.style.display='none';
   closeModal(); loadData();
 }
 
@@ -2446,11 +2433,14 @@ function renderDetailTable(visits, arrCols){
 // ── REPORTS ──────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 async function generateReport(type){
-  const noKeyEl=document.getElementById('no-key-warn');
+  // Los reportes con IA pasan por el Apps Script (que guarda la key de Anthropic
+  // del lado del servidor) y quedan restringidos a supervisores identificados —
+  // si todavía no se identificó nadie en esta sesión, pedirlo primero.
+  if(!app.supervisor){ abrirVerificacion('generarReporte', type); return; }
+
   const corsEl=document.getElementById('cors-warn');
   const apiErrEl=document.getElementById('api-err-warn');
-  noKeyEl.style.display='none'; corsEl.style.display='none'; apiErrEl.style.display='none';
-  if(!app.cfg.key){ noKeyEl.style.display='block'; return; }
+  corsEl.style.display='none'; apiErrEl.style.display='none';
 
   let fromDate=null, toDate=null;
   const rtype = type==='personalizado' ? getRtype() : 'simple';
@@ -2572,18 +2562,14 @@ async function generateReport(type){
 }
 
 // ── Anthropic API helper ──────────────────────────────────────
+// La llamada a Anthropic pasa por el Apps Script (acción "callClaude"), que
+// guarda la API key del lado del servidor — nunca llega al navegador. Ver
+// _authFields(): requiere estar identificado como supervisor para poder pedirlo.
 async function callAnthropic(prompt, maxTok, fileBlocks=[]){
   const content=[...fileBlocks,{type:'text',text:prompt}];
-  const r=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':app.cfg.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:maxTok,messages:[{role:'user',content}]})
-  });
-  if(!r.ok){
-    let e; try{e=await r.json();}catch(ex){e={error:{message:'HTTP '+r.status}};}
-    throw new Error(e?.error?.message||'Error HTTP '+r.status);
-  }
-  return r.json();
+  const d=await postAction({action:'callClaude', maxTokens:maxTok, content, ..._authFields()});
+  if(d && d.ok===false) throw new Error(d.error||'Error de API');
+  return d;
 }
 
 // ── Professional report helpers ───────────────────────────────
@@ -3695,6 +3681,7 @@ function ejecutarOpPendiente(supervisor, pwd){
   }
   if(action==='cargarVisita') openCargarVisita(context);
   else if(action==='editarLocalData') openEditLocalDataModal(context);
+  else if(action==='generarReporte') generateReport(context);
 }
 
 // Credenciales del operador autenticado, para adjuntar a escrituras del backend.
