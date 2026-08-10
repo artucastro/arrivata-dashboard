@@ -1138,7 +1138,7 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPGzgrg9Jq8p9TtUsNnHYrjB2-gSYVpGXjqcfJvNwP_q92rAVvdhsz9qyL7bU1wFzlhw/exec';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGVkGn_A2cgH5C6loO7IVqZwEEYiU3MERQVGEFNlDV7fj-vlsT-_DYBnMkqaEjiKJfsA/exec';
 
 const BRAND_SUFFIXES = {
   ARRIVATA:  [' AR'],
@@ -1699,6 +1699,7 @@ function processCSV(csv){
     'Actualizado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
   setLoading(false);
   loadNotas();
+  loadFotos();
   loadLocalData();
 }
 
@@ -1997,6 +1998,11 @@ function getFiltered(){
 
 function sortBy(field){ if(app.sortField===field) app.sortDir=app.sortDir==='asc'?'desc':'asc'; else{app.sortField=field;app.sortDir='asc';} app.page=1; renderTable(); }
 
+// Íconos SVG para los indicadores de nota/foto (en vez de emoji: algunos
+// navegadores/SO los renderizan enormes y distorsionados en botones chicos).
+const ICON_NOTA='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+const ICON_FOTO='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+
 function renderTable(){
   const rows=getFiltered();
   const keyMap={fecha:'FECHA',local:'Local',zona:'_zona'};
@@ -2019,12 +2025,20 @@ function renderTable(){
     tbody.innerHTML=page.map(r=>{
       const brandCells=brands.map(b=>`<td><span class="badge-sm ${hasPresence(r,b)?'brand-si':'brand-no'}">${hasPresence(r,b)?'✓':'—'}</span></td>`).join('');
       const localName=r['Local']||'';
+      const fechaVisita=r['FECHA']||'';
       const localCell=localName
         ? `<button class="local-link" data-local="${esc(localName)}">${esc(localName)}</button>`
         : '<span style="color:#C5B49A">—</span>';
+      const nota=localName?getNota(localName,fechaVisita):'';
+      const fotos=localName?((app._fotos[localName]||{})[fechaVisita]||[]):[];
+      const notaFotoBtns=
+        (nota?`<button onclick="verNota('${esc(localName)}','${esc(fechaVisita)}')" title="Ver nota"
+          style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;line-height:1;vertical-align:middle">${ICON_NOTA}</button>`:'')+
+        (fotos.length?`<button onclick="verFotos('${esc(localName)}','${esc(fechaVisita)}')" title="Ver ${fotos.length} foto(s)"
+          style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-size:.68rem;font-weight:700;line-height:1;vertical-align:middle;display:inline-flex;align-items:center;gap:3px">${ICON_FOTO} ${fotos.length}</button>`:'');
       return `<tr>
-        <td style="color:#7B6A55;white-space:nowrap">${esc(r['FECHA']||'—')}</td>
-        <td>${localCell}</td>
+        <td style="color:#7B6A55;white-space:nowrap">${esc(fechaVisita||'—')}</td>
+        <td>${localCell}${notaFotoBtns}</td>
         <td><span style="font-size:.78rem;background:#f1f5f9;padding:2px 8px;border-radius:6px;font-weight:500">${esc(r._zona||'—')}</span></td>
         ${brandCells}
         <td style="font-size:.72rem;color:#7B6A55">${esc(r['Ubicación']||r['Ubicacion']||'')}</td>
@@ -2422,7 +2436,7 @@ function renderDetailTable(visits, arrCols){
         ${nota?`<button onclick="verNota('${esc(localNombre)}','${esc(fechaVisita)}')"
           style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;font-weight:700">Ver nota</button>`:''}
         ${fotos.length?`<button onclick="verFotos('${esc(localNombre)}','${esc(fechaVisita)}')"
-          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:700">&#128247; ${fotos.length}</button>`:''}
+          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${ICON_FOTO} ${fotos.length}</button>`:''}
       </td>
       ${cells}
     </tr>`;
@@ -3358,7 +3372,13 @@ function loadNotas(){
   if(!app.cfg.scriptUrl) return;
   fetch(app.cfg.scriptUrl+'?action=getNotas',{redirect:'follow'})
     .then(r=>r.json())
-    .then(d=>{ if(d.ok) app._notas=d.notas||{}; })
+    .then(d=>{
+      if(d.ok){
+        app._notas=d.notas||{};
+        renderTable();
+        if(app.detLocal) applyDetailPeriod(app.detPeriodDays);
+      }
+    })
     .catch(()=>{});
 }
 
@@ -3424,12 +3444,55 @@ function loadFotosLocal(localName){
     .then(d=>{
       if(d.ok){
         app._fotos[localName]=d.fotos||{};
+        renderTable();
         if(app.detLocal===localName) applyDetailPeriod(app.detPeriodDays);
       }
     }).catch(()=>{});
 }
 
+// Trae las fotos de TODOS los locales de una — para poder mostrar el
+// indicador de fotos en la tabla principal, no solo en el detalle de un local.
+function loadFotos(){
+  if(!app.cfg.scriptUrl) return;
+  fetch(app.cfg.scriptUrl+'?action=getFotos',{redirect:'follow'})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.ok){
+        app._fotos=d.fotos||{};
+        renderTable();
+        if(app.detLocal) applyDetailPeriod(app.detPeriodDays);
+      }
+    }).catch(()=>{});
+}
+
 let _lbFotos=[],_lbIdx=0;
+
+// El link público de Drive ("uc?export=view", "thumbnail", etc.) no carga
+// de forma confiable dentro de un <img> — Google lo bloquea de forma
+// intermitente para hotlinking. En vez de depender de eso, todas las fotos
+// (viejas y nuevas) se piden por fetch a través del propio Apps Script
+// (acción "getFotoData"), que las trae en base64 y arman un data URI acá.
+function extractDriveFileId(url){
+  if(!url) return null;
+  const m=url.match(/[?&]id=([\w-]+)/)||url.match(/\/d\/([\w-]+)/);
+  return m?m[1]:null;
+}
+const _fotoDataCache={};
+async function fetchFotoDataUri(url){
+  const id=extractDriveFileId(url);
+  if(!id||!app.cfg.scriptUrl) return url; // no es de Drive (ej. preview local): usar tal cual
+  if(_fotoDataCache[id]) return _fotoDataCache[id];
+  try{
+    const r=await fetch(`${app.cfg.scriptUrl}?action=getFotoData&id=${id}`,{redirect:'follow'});
+    const d=await r.json();
+    if(d.ok){
+      const uri=`data:${d.mimeType||'image/jpeg'};base64,${d.data}`;
+      _fotoDataCache[id]=uri;
+      return uri;
+    }
+  }catch(e){}
+  return null;
+}
 
 function verFotos(local,fecha){
   _lbFotos=(app._fotos[local]||{})[fecha]||[];
@@ -3444,11 +3507,16 @@ function openFotoLightbox(url){
   document.getElementById('modal-foto').style.display='flex';
 }
 
-function showLightboxPhoto(){
-  document.getElementById('modal-foto-img').src=_lbFotos[_lbIdx]||'';
-  document.getElementById('lb-counter').textContent=_lbFotos.length>1?`${_lbIdx+1} / ${_lbFotos.length}`:'';
-  document.getElementById('lb-prev').style.display=_lbFotos.length>1&&_lbIdx>0?'flex':'none';
-  document.getElementById('lb-next').style.display=_lbFotos.length>1&&_lbIdx<_lbFotos.length-1?'flex':'none';
+async function showLightboxPhoto(){
+  const idx=_lbIdx, fotos=_lbFotos;
+  const img=document.getElementById('modal-foto-img');
+  img.src='';
+  document.getElementById('lb-counter').textContent=fotos.length>1?`${idx+1} / ${fotos.length}`:'';
+  document.getElementById('lb-prev').style.display=fotos.length>1&&idx>0?'flex':'none';
+  document.getElementById('lb-next').style.display=fotos.length>1&&idx<fotos.length-1?'flex':'none';
+  const uri=await fetchFotoDataUri(fotos[idx]);
+  // Si mientras cargaba el usuario navegó a otra foto, no pisar con esta.
+  if(_lbIdx===idx && _lbFotos===fotos) img.src=uri||'';
 }
 
 function lightboxNav(dir){
@@ -3838,9 +3906,16 @@ async function submitVisita(){
     if(VF_PHOTOS.length>0&&scriptUrl){
       const fotos=VF_PHOTOS.map(p=>p.dataUrl.replace(/^data:image\/\w+;base64,/,''));
       const dp=await postAction({action:'savePhoto',local,fecha,fotos, ..._authFields(app.viewZone)});
-      if(!dp.ok) showToast('La visita se guardó, pero no se pudieron subir las fotos: '+(dp.error||'error desconocido'), 'error');
+      if(!dp.ok){
+        showToast('La visita se guardó, pero no se pudieron subir las fotos: '+(dp.error||'error desconocido'), 'error');
+      } else {
+        // Traer las fotos recién subidas ya mismo, para que el indicador
+        // aparezca en el momento y no recién en el próximo refresh.
+        loadFotosLocal(local);
+      }
     }
 
+    renderTable();
     btn.textContent='¡Guardado!'; btn.style.background='#16a34a';
     setTimeout(()=>closeCargarVisita(), 1200);
   } catch(e){

@@ -267,18 +267,54 @@ function doGet(e) {
     return _ok({ ok: true, notas });
   }
 
-  // ── Fotos de un local ─────────────────────────────────────
+  // ── Datos (base64) de una foto puntual — el script la trae de Drive
+  // (autenticado como dueño del archivo) y la devuelve como texto dentro
+  // de la respuesta JSON. No se puede devolver el Blob crudo directo desde
+  // doGet ("el valor que muestra no es un valor de retorno admitido" — solo
+  // se admite TextOutput/HtmlOutput), y el link público de Drive no carga
+  // de forma confiable dentro de un <img> embebido.
+  if (action === 'getFotoData') {
+    const fileId = e.parameter.id || '';
+    if (!fileId) return _ok({ ok: false, error: 'Falta id' });
+    try {
+      const blob = DriveApp.getFileById(fileId).getBlob();
+      return _ok({ ok: true, mimeType: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) });
+    } catch (err) {
+      return _ok({ ok: false, error: 'Foto no encontrada' });
+    }
+  }
+
+  // ── Fotos de un local (?local=X) o de TODOS los locales (sin local) ──
   if (action === 'getFotos') {
     const local = e.parameter.local || '';
-    const prefix = 'foto|' + local + '|';
     const all = _props().getProperties();
-    const fotos = {};
+    if (local) {
+      const prefix = 'foto|' + local + '|';
+      const fotos = {};
+      Object.keys(all).forEach(function (k) {
+        if (k.indexOf(prefix) === 0) {
+          try { fotos[k.slice(prefix.length)] = JSON.parse(all[k]); } catch (_) {}
+        }
+      });
+      return _ok({ ok: true, fotos });
+    }
+    // Sin `local`: devolver todas, agrupadas por local y fecha —
+    // para poder mostrar el indicador de fotos en cualquier tabla,
+    // no solo en el detalle de un local puntual.
+    const fotosPorLocal = {};
     Object.keys(all).forEach(function (k) {
-      if (k.indexOf(prefix) === 0) {
-        try { fotos[k.slice(prefix.length)] = JSON.parse(all[k]); } catch (_) {}
-      }
+      if (k.indexOf('foto|') !== 0) return;
+      const rest = k.slice(5); // "<local>|<fecha>"
+      const sep = rest.lastIndexOf('|');
+      if (sep === -1) return;
+      const loc = rest.slice(0, sep);
+      const fecha = rest.slice(sep + 1);
+      try {
+        if (!fotosPorLocal[loc]) fotosPorLocal[loc] = {};
+        fotosPorLocal[loc][fecha] = JSON.parse(all[k]);
+      } catch (_) {}
     });
-    return _ok({ ok: true, fotos });
+    return _ok({ ok: true, fotos: fotosPorLocal });
   }
 
   // ── Visitas (lectura en vivo, sin caché de "Publicar en la web") ──
@@ -422,8 +458,10 @@ function doPost(e) {
         const blob = Utilities.newBlob(bytes, 'image/jpeg',
           'gondola_' + local + '_' + fecha.replace(/\//g, '-') + '_' + i + '.jpg');
         const file = DriveApp.createFile(blob);
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+        // No hace falta compartir el archivo: se sirve autenticado a través
+        // de la acción "fotoImg" de este mismo script (ver doGet), que evita
+        // el hotlinking poco confiable de "drive.google.com/...".
+        return ScriptApp.getService().getUrl() + '?action=getFotoData&id=' + file.getId();
       });
       const key = 'foto|' + local + '|' + fecha;
       var existing = [];
