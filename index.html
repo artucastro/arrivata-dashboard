@@ -3819,12 +3819,30 @@ function renderVFProducts(){
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">SI</button>
           <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','no')" id="vf-no-${id}"
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">NO</button>
-          <input type="text" inputmode="numeric" id="vf-qty-${id}" data-vid="${id}"
-            placeholder="cant." oninput="VF_QTY[this.dataset.vid]=this.value"
-            style="width:60px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:.82rem;display:none">
+          <span id="vf-qtywrap-${id}" style="display:none;align-items:center;gap:3px">
+            <button type="button" onmousedown="event.preventDefault()" onclick="qtyInsert('${id}','-')"
+              style="width:24px;height:28px;padding:0;border-radius:6px;font-size:.9rem;font-weight:700;border:1px solid var(--border);background:#fff;color:#A09078;cursor:pointer">−</button>
+            <input type="text" inputmode="tel" id="vf-qty-${id}" data-vid="${id}"
+              placeholder="cant." oninput="VF_QTY[this.dataset.vid]=this.value"
+              style="width:50px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:.82rem">
+            <button type="button" onmousedown="event.preventDefault()" onclick="qtyInsert('${id}','+')"
+              style="width:24px;height:28px;padding:0;border-radius:6px;font-size:.9rem;font-weight:700;border:1px solid var(--border);background:#fff;color:#A09078;cursor:pointer">+</button>
+          </span>
         </div>`;
       }).join('')}
     </div>`).join('');
+}
+
+function qtyInsert(id, ch){
+  const inp=document.getElementById(`vf-qty-${id}`);
+  if(!inp) return;
+  const start=inp.selectionStart ?? inp.value.length;
+  const end=inp.selectionEnd ?? inp.value.length;
+  inp.value=inp.value.slice(0,start)+ch+inp.value.slice(end);
+  VF_QTY[id]=inp.value;
+  inp.focus();
+  const pos=start+ch.length;
+  inp.setSelectionRange(pos,pos);
 }
 
 function setProductSN(col, val){
@@ -3835,15 +3853,16 @@ function setProductSN(col, val){
   const siBtn=document.getElementById(`vf-si-${id}`);
   const noBtn=document.getElementById(`vf-no-${id}`);
   const qtyInp=document.getElementById(`vf-qty-${id}`);
+  const qtyWrap=document.getElementById(`vf-qtywrap-${id}`);
   if(!siBtn||!noBtn) return;
 
   siBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #D1C5B0;background:#fff;color:#A09078';
   noBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #D1C5B0;background:#fff;color:#A09078';
-  qtyInp.style.display='none';
+  qtyWrap.style.display='none';
 
   if(VF[col].sn==='si'){
     siBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #16a34a;background:#f0fdf4;color:#16a34a';
-    qtyInp.style.display='inline-block'; qtyInp.focus();
+    qtyWrap.style.display='inline-flex'; qtyInp.focus();
   } else if(VF[col].sn==='no'){
     noBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #dc2626;background:#fef2f2;color:#dc2626';
   }
