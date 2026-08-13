@@ -510,41 +510,54 @@ function doPost(e) {
       // Apps Script ejecuta este doPost por completo y recién DESPUÉS redirige
       // al cliente a una segunda URL para entregarle la respuesta; si ese
       // segundo salto falla (frecuente en la infraestructura de Apps Script),
-      // el navegador muestra un error aunque la fila ya se haya guardado acá.
-      // clientId identifica un mismo intento de guardado — el cliente reusa el
-      // mismo id en reintentos, así que si ya se guardó no se duplica la fila.
+      // el navegador muestra un error aunque la fila ya se haya guardado acá,
+      // y a veces el propio Apps Script dispara dos ejecuciones casi
+      // simultáneas para el mismo pedido. clientId identifica un mismo
+      // intento de guardado — el cliente reusa el mismo id en reintentos.
+      // Un simple "leer caché, después escribir" no alcanza: si dos
+      // ejecuciones corren en paralelo, ambas pueden leer el caché vacío
+      // antes de que cualquiera llegue a marcarlo. El lock serializa esas
+      // ejecuciones para que la segunda vea el caché ya marcado.
       const clientId = data.clientId || '';
       const cache = clientId ? CacheService.getScriptCache() : null;
-      if (cache && cache.get('visita|' + clientId)) return _ok();
+      const lock = clientId ? LockService.getScriptLock() : null;
+      if (lock) {
+        try { lock.waitLock(20000); } catch (e) { /* seguir sin lock antes que perder la visita */ }
+      }
+      try {
+        if (cache && cache.get('visita|' + clientId)) return _ok();
 
-      const ss = _openSpreadsheetForSupervisor(target);
-      const sheet = (target.sheetName && ss.getSheetByName(target.sheetName)) || ss.getSheets()[0];
+        const ss = _openSpreadsheetForSupervisor(target);
+        const sheet = (target.sheetName && ss.getSheetByName(target.sheetName)) || ss.getSheets()[0];
 
-      const allValues = sheet.getDataRange().getValues();
-      const hIdx = allValues.findIndex(function (r) {
-        return String(r[0]).trim().toUpperCase() === 'FECHA';
-      });
-      if (hIdx === -1) throw new Error('No se encontró la fila FECHA en la hoja ' + sheet.getName());
+        const allValues = sheet.getDataRange().getValues();
+        const hIdx = allValues.findIndex(function (r) {
+          return String(r[0]).trim().toUpperCase() === 'FECHA';
+        });
+        if (hIdx === -1) throw new Error('No se encontró la fila FECHA en la hoja ' + sheet.getName());
 
-      const headers = allValues[hIdx].map(function (h) { return String(h).trim(); });
+        const headers = allValues[hIdx].map(function (h) { return String(h).trim(); });
 
-      const row = headers.map(function (h) {
-        if (h === 'FECHA') return data.fecha || '';
-        if (/^d[iíI][aá]$/i.test(h.trim())) return data.dia || '';
-        if (h === 'Local') return data.local || '';
-        if (h === 'Ubicación' || h === 'Ubicacion') return data.ubicacion || '';
-        if (h === 'Supervisor') return target.name || '';
-        if (data.productos && h in data.productos) return data.productos[h];
-        return '';
-      });
+        const row = headers.map(function (h) {
+          if (h === 'FECHA') return data.fecha || '';
+          if (/^d[iíI][aá]$/i.test(h.trim())) return data.dia || '';
+          if (h === 'Local') return data.local || '';
+          if (h === 'Ubicación' || h === 'Ubicacion') return data.ubicacion || '';
+          if (h === 'Supervisor') return target.name || '';
+          if (data.productos && h in data.productos) return data.productos[h];
+          return '';
+        });
 
-      // sheet.appendRow() falla silenciosamente en hojas con un Filter activo
-      // (las creadas por _applyTemplateStyle) — no tira error ni agrega fila.
-      // setValues() en la fila calculada sí persiste.
-      const targetRow = sheet.getLastRow() + 1;
-      sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
-      if (cache) cache.put('visita|' + clientId, '1', 21600); // 6 hs
-      return _ok();
+        // sheet.appendRow() falla silenciosamente en hojas con un Filter activo
+        // (las creadas por _applyTemplateStyle) — no tira error ni agrega fila.
+        // setValues() en la fila calculada sí persiste.
+        const targetRow = sheet.getLastRow() + 1;
+        sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
+        if (cache) cache.put('visita|' + clientId, '1', 21600); // 6 hs
+        return _ok();
+      } finally {
+        if (lock) lock.releaseLock();
+      }
     }
 
     // ── Reportes con IA: proxy a Anthropic (solo supervisores identificados) ──
