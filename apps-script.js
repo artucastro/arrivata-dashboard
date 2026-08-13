@@ -507,6 +507,16 @@ function doPost(e) {
       if (resolved.error) return _ok({ ok: false, error: resolved.error });
       const target = resolved.target;
 
+      // Apps Script ejecuta este doPost por completo y recién DESPUÉS redirige
+      // al cliente a una segunda URL para entregarle la respuesta; si ese
+      // segundo salto falla (frecuente en la infraestructura de Apps Script),
+      // el navegador muestra un error aunque la fila ya se haya guardado acá.
+      // clientId identifica un mismo intento de guardado — el cliente reusa el
+      // mismo id en reintentos, así que si ya se guardó no se duplica la fila.
+      const clientId = data.clientId || '';
+      const cache = clientId ? CacheService.getScriptCache() : null;
+      if (cache && cache.get('visita|' + clientId)) return _ok();
+
       const ss = _openSpreadsheetForSupervisor(target);
       const sheet = (target.sheetName && ss.getSheetByName(target.sheetName)) || ss.getSheets()[0];
 
@@ -533,6 +543,7 @@ function doPost(e) {
       // setValues() en la fila calculada sí persiste.
       const targetRow = sheet.getLastRow() + 1;
       sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
+      if (cache) cache.put('visita|' + clientId, '1', 21600); // 6 hs
       return _ok();
     }
 
