@@ -80,6 +80,20 @@ function _findHeaderRow(sheet) {
   return { headers: values[hIdx], hIdx: hIdx };
 }
 
+// Arma la fila a escribir (nueva visita o edición de una existente) según
+// el orden real de columnas de la hoja. Compartida por saveVisita/updateVisita.
+function _buildVisitaRow(headers, data, target) {
+  return headers.map(function (h) {
+    if (h === 'FECHA') return data.fecha || '';
+    if (/^d[iíI][aá]$/i.test(h.trim())) return data.dia || '';
+    if (h === 'Local') return data.local || '';
+    if (h === 'Ubicación' || h === 'Ubicacion') return data.ubicacion || '';
+    if (h === 'Supervisor') return target.name || '';
+    if (data.productos && h in data.productos) return data.productos[h];
+    return '';
+  });
+}
+
 // Borra el contenido (valores Y fórmulas) de las filas de datos de una hoja,
 // dejando el header intacto. Hace flush() y relee para confirmar que
 // realmente quedó vacío (por si alguna fórmula tipo IMPORTRANGE la repuebla).
@@ -537,16 +551,7 @@ function doPost(e) {
         if (hIdx === -1) throw new Error('No se encontró la fila FECHA en la hoja ' + sheet.getName());
 
         const headers = allValues[hIdx].map(function (h) { return String(h).trim(); });
-
-        const row = headers.map(function (h) {
-          if (h === 'FECHA') return data.fecha || '';
-          if (/^d[iíI][aá]$/i.test(h.trim())) return data.dia || '';
-          if (h === 'Local') return data.local || '';
-          if (h === 'Ubicación' || h === 'Ubicacion') return data.ubicacion || '';
-          if (h === 'Supervisor') return target.name || '';
-          if (data.productos && h in data.productos) return data.productos[h];
-          return '';
-        });
+        const row = _buildVisitaRow(headers, data, target);
 
         // sheet.appendRow() falla silenciosamente en hojas con un Filter activo
         // (las creadas por _applyTemplateStyle) — no tira error ni agrega fila.
@@ -558,6 +563,46 @@ function doPost(e) {
       } finally {
         if (lock) lock.releaseLock();
       }
+    }
+
+    // ── Editar una visita ya guardada (corregir datos / agregar fotos) ──
+    // A diferencia de saveVisita (que agrega una fila), esto ubica la fila
+    // original por Local+FECHA y la sobrescribe con setValues() — es
+    // naturalmente seguro ante reintentos (no puede duplicar filas), salvo
+    // que la fecha editada cambie: un reintento después de eso ya no
+    // encontraría la fila por su FECHA original y devolvería error (inofensivo,
+    // la edición ya se guardó, no hace falta el mismo lock que saveVisita).
+    if (data.action === 'updateVisita') {
+      const resolved = _resolveTarget(data);
+      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      const target = resolved.target;
+
+      const ss = _openSpreadsheetForSupervisor(target);
+      const sheet = (target.sheetName && ss.getSheetByName(target.sheetName)) || ss.getSheets()[0];
+
+      const allValues = sheet.getDataRange().getValues();
+      const hIdx = allValues.findIndex(function (r) {
+        return String(r[0]).trim().toUpperCase() === 'FECHA';
+      });
+      if (hIdx === -1) throw new Error('No se encontró la fila FECHA en la hoja ' + sheet.getName());
+      const headers = allValues[hIdx].map(function (h) { return String(h).trim(); });
+      const localIdx = headers.findIndex(function (h) { return h === 'Local'; });
+
+      const origLocal = String(data.origLocal || '').trim();
+      const origFecha = String(data.origFecha || '').trim();
+      let rowIdx = -1;
+      for (let i = hIdx + 1; i < allValues.length; i++) {
+        const fechaMatch = String(allValues[i][0]).trim() === origFecha;
+        const localMatch = localIdx === -1 || String(allValues[i][localIdx]).trim() === origLocal;
+        if (fechaMatch && localMatch) { rowIdx = i; break; }
+      }
+      if (rowIdx === -1) {
+        return _ok({ ok: false, error: 'No se encontró la visita original — puede que ya se haya editado o borrado.' });
+      }
+
+      const row = _buildVisitaRow(headers, data, target);
+      sheet.getRange(rowIdx + 1, 1, 1, row.length).setValues([row]);
+      return _ok();
     }
 
     // ── Reportes con IA: proxy a Anthropic (solo supervisores identificados) ──

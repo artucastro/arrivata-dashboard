@@ -406,10 +406,10 @@
     <!-- Header -->
     <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div>
-        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:1.05rem;color:var(--red)">Cargar Visita</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:1px">Registrá los productos vistos en góndola</div>
+        <div id="vf-title" style="font-family:'Playfair Display',serif;font-weight:700;font-size:1.05rem;color:var(--red)">Cargar Visita</div>
+        <div id="vf-subtitle" style="font-size:.7rem;color:var(--muted);margin-top:1px">Registrá los productos vistos en góndola</div>
       </div>
-      <button onclick="closeCargarVisita()" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+      <button onclick="cancelarVisita()" style="font-size:1.6rem;color:var(--muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
     </div>
     <!-- Body scrollable -->
     <div style="overflow-y:auto;flex:1;padding:16px 20px">
@@ -430,6 +430,10 @@
         </div>
       </div>
       <div id="vf-products"></div>
+      <div id="vf-existing-photos-wrap" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos ya subidas</label>
+        <div id="vf-existing-photos" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
       <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
         <label style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:7px;display:block">Fotos de góndola <span style="font-weight:400">(opcional, máx 10)</span></label>
         <input type="file" id="vf-fotos" accept="image/*" multiple onchange="addVFPhotos(this)" style="display:none">
@@ -448,7 +452,7 @@
     <!-- Footer -->
     <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0">
       <button id="vf-submit-btn" onclick="submitVisita()" class="btn btn-blue" style="flex:1;padding:10px;font-size:.88rem">Guardar Visita</button>
-      <button class="btn btn-ghost" onclick="closeCargarVisita()">Cancelar</button>
+      <button class="btn btn-ghost" onclick="cancelarVisita()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -2012,6 +2016,7 @@ function sortBy(field){ if(app.sortField===field) app.sortDir=app.sortDir==='asc
 // Íconos SVG para los indicadores de nota/foto (en vez de emoji: algunos
 // navegadores/SO los renderizan enormes y distorsionados en botones chicos).
 const ICON_NOTA='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+const ICON_EDIT='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>';
 const ICON_FOTO='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>';
 
 function renderTable(){
@@ -2046,7 +2051,9 @@ function renderTable(){
         (nota?`<button onclick="verNota('${esc(localName)}','${esc(fechaVisita)}')" title="Ver nota"
           style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;line-height:1;vertical-align:middle">${ICON_NOTA}</button>`:'')+
         (fotos.length?`<button onclick="verFotos('${esc(localName)}','${esc(fechaVisita)}')" title="Ver ${fotos.length} foto(s)"
-          style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-size:.68rem;font-weight:700;line-height:1;vertical-align:middle;display:inline-flex;align-items:center;gap:3px">${ICON_FOTO} ${fotos.length}</button>`:'');
+          style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-size:.68rem;font-weight:700;line-height:1;vertical-align:middle;display:inline-flex;align-items:center;gap:3px">${ICON_FOTO} ${fotos.length}</button>`:'')+
+        (localName?`<button onclick="editVisita('${esc(localName)}','${esc(fechaVisita)}')" title="Editar visita"
+          style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #7B6A55;background:#F5EDE0;color:#7B6A55;cursor:pointer;line-height:1;vertical-align:middle">${ICON_EDIT}</button>`:'');
       return `<tr>
         <td style="color:#7B6A55;white-space:nowrap">${esc(fechaVisita||'—')}</td>
         <td>${localCell}${notaFotoBtns}</td>
@@ -2456,6 +2463,8 @@ function renderDetailTable(visits, arrCols){
           style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;font-weight:700">Ver nota</button>`:''}
         ${fotos.length?`<button onclick="verFotos('${esc(localNombre)}','${esc(fechaVisita)}')"
           style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${ICON_FOTO} ${fotos.length}</button>`:''}
+        <button onclick="editVisita('${esc(localNombre)}','${esc(fechaVisita)}')" title="Editar visita"
+          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #7B6A55;background:#F5EDE0;color:#7B6A55;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${ICON_EDIT} Editar</button>
       </td>
       ${cells}
     </tr>`;
@@ -3414,6 +3423,11 @@ let VF_PHOTOS=[];
 // formulario y se reutiliza en reintentos, para que el servidor pueda
 // evitar filas duplicadas si un reintento en realidad ya se había guardado.
 let VF_CLIENT_ID=null;
+// Si no es null, el formulario está editando una visita ya guardada en vez
+// de cargar una nueva — guarda la identidad ORIGINAL (local+fecha) de esa
+// fila para que el backend sepa cuál sobrescribir, incluso si el usuario
+// cambia el local o la fecha en el propio formulario.
+let VF_EDIT=null;
 
 function compressImage(file){
   return new Promise(resolve=>{
@@ -3627,10 +3641,11 @@ async function guardarLocalData(){
 const VF_BRAND_LABELS = { ARRIVATA:'Arrivata', FESTA:'Festa', WAPI:'WAPI', CUISINE:'Cuisine', CARREFOUR:'Carrefour' };
 const VF_BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUISINE:'#A07830', CARREFOUR:'#0d9488' };
 
-function openCargarVisita(localName){
+function openCargarVisita(localName, editRow){
   Object.keys(VF).forEach(k=>delete VF[k]);
   Object.keys(VF_QTY).forEach(k=>delete VF_QTY[k]);
   VF_PHOTOS=[];
+  VF_EDIT=editRow ? {local:editRow['Local']||'', origFecha:editRow['FECHA']||''} : null;
   VF_CLIENT_ID=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
   renderVFPhotoPreviews();
 
@@ -3648,13 +3663,17 @@ function openCargarVisita(localName){
   ])].sort();
   dlU.innerHTML=existingUbics.map(u=>`<option value="${esc(u)}">`).join('');
 
-  // Pre-llenar nombre
   const nameInp=document.getElementById('vf-local');
-  nameInp.value=localName||'';
-
-  // Pre-llenar dirección si el local ya existe (visitado o de la base asignada)
   const ubicInp=document.getElementById('vf-ubic');
-  if(localName){
+
+  if(editRow){
+    nameInp.value=editRow['Local']||'';
+    ubicInp.value=editRow['Ubicación']||editRow['Ubicacion']||'';
+    const [dd,mm,yyyy]=String(editRow['FECHA']||'').split('/');
+    document.getElementById('vf-fecha').value=(dd&&mm&&yyyy)?`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`:'';
+    document.getElementById('vf-nota').value=getNota(editRow['Local']||'', editRow['FECHA']||'');
+  } else if(localName){
+    nameInp.value=localName;
     const row=app.raw.find(r=>r['Local']===localName);
     if(row){
       ubicInp.value=row['Ubicación']||row['Ubicacion']||'';
@@ -3662,25 +3681,73 @@ function openCargarVisita(localName){
       const base=(app._localesBase||[]).find(l=>l.local===localName);
       ubicInp.value=base?(base.ubicacion||''):'';
     }
+    document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
+    document.getElementById('vf-nota').value='';
   } else {
+    nameInp.value='';
     ubicInp.value='';
+    document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
+    document.getElementById('vf-nota').value='';
     setTimeout(()=>nameInp.focus(),100);
   }
 
-  // Fecha default hoy
-  document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
-  document.getElementById('vf-nota').value='';
-
-  // Reset botón
+  // Título y botón según el modo
+  document.getElementById('vf-title').textContent=editRow?'Editar Visita':'Cargar Visita';
+  document.getElementById('vf-subtitle').textContent=editRow?'Corregí los datos o agregá fotos a esta visita':'Registrá los productos vistos en góndola';
   const btn=document.getElementById('vf-submit-btn');
-  btn.textContent='Guardar Visita'; btn.disabled=false; btn.style.background='';
+  btn.textContent=editRow?'Guardar Cambios':'Guardar Visita'; btn.disabled=false; btn.style.background='';
 
   renderVFProducts();
+
+  // Precargar SI/cantidad de los productos que ya tenía esta visita
+  if(editRow){
+    Object.values(app.brandCols).flat().forEach(col=>{
+      const raw=String(editRow[col]||'').trim();
+      if(!raw) return;
+      setProductSN(col,'si');
+      const id=col.replace(/\W/g,'_');
+      VF_QTY[id]=raw;
+      const qtyInp=document.getElementById(`vf-qty-${id}`);
+      if(qtyInp) qtyInp.value=raw;
+    });
+  }
+
+  // Fotos ya subidas (solo lectura — para agregar más se usa "Agregar foto")
+  const existingWrap=document.getElementById('vf-existing-photos-wrap');
+  const existingList=document.getElementById('vf-existing-photos');
+  const existingFotos=editRow?((app._fotos[editRow['Local']]||{})[editRow['FECHA']]||[]):[];
+  if(existingFotos.length){
+    existingWrap.style.display='block';
+    existingList.innerHTML=existingFotos.map((url,i)=>
+      `<button type="button" onclick="verFotos('${esc(editRow['Local']).replace(/'/g,"\\'")}','${esc(editRow['FECHA']).replace(/'/g,"\\'")}')"
+        style="width:52px;height:52px;border-radius:6px;border:1px solid var(--border);background:#f1f5f9;color:#7B6A55;font-size:.68rem;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Ver fotos">${ICON_FOTO}</button>`
+    ).join('');
+  } else {
+    existingWrap.style.display='none';
+    existingList.innerHTML='';
+  }
+
   document.getElementById('modal-visita').style.display='flex';
+}
+
+function editVisita(local, fecha){
+  const row=app.raw.find(r=>r['Local']===local && r['FECHA']===fecha);
+  if(!row){ showToast('No se encontró esa visita.', 'error'); return; }
+  openCargarVisita(local, row);
+}
+
+function cancelarVisita(){
+  const local=(document.getElementById('vf-local').value||'').trim();
+  const hasProducts=Object.values(VF).some(v=>v&&v.sn);
+  const hasNota=(document.getElementById('vf-nota').value||'').trim().length>0;
+  const hasPhotos=VF_PHOTOS.length>0;
+  if((local||hasProducts||hasNota||hasPhotos) && !confirm('¿Estás seguro que querés cancelar? Se perderán los datos ingresados.')) return;
+  closeCargarVisita();
 }
 
 function closeCargarVisita(){
   document.getElementById('modal-visita').style.display='none';
+  VF_EDIT=null;
 }
 
 // ── Verificación de identidad por supervisor ──────────────────
@@ -3919,35 +3986,56 @@ async function submitVisita(){
 
   const btn=document.getElementById('vf-submit-btn');
   btn.textContent='Guardando…'; btn.disabled=true;
+  const isEdit=!!VF_EDIT;
 
   try {
     // El supervisor que opera puede diferir del logueado (verificación propia)
-    const d=await postAction({action:'saveVisita', fecha, dia, local, ubicacion:ubic, productos, clientId:VF_CLIENT_ID, ..._authFields(app.viewZone)}, 1);
+    const payload=isEdit
+      ? {action:'updateVisita', origLocal:VF_EDIT.local, origFecha:VF_EDIT.origFecha, fecha, dia, local, ubicacion:ubic, productos, ..._authFields(app.viewZone)}
+      : {action:'saveVisita', fecha, dia, local, ubicacion:ubic, productos, clientId:VF_CLIENT_ID, ..._authFields(app.viewZone)};
+    const d=await postAction(payload, isEdit?0:1);
     if(!d.ok){
       btn.textContent='Error — Reintentar'; btn.disabled=false;
       showToast('No se pudo guardar la visita: '+(d.error||'error desconocido'), 'error');
       return;
     }
 
-    // La visita quedó confirmada en el spreadsheet — recién ahora se refleja acá
-    const newRow={FECHA:fecha, Local:local, 'Ubicación':ubic, 'Ubicacion':ubic, _zona:extractZona(ubic)};
-    Object.keys(app.brandCols).forEach(brand=>{
-      (app.brandCols[brand]||[]).forEach(col=>{
-        newRow[col]=String(productos[col]!==undefined?productos[col]:'');
+    if(isEdit){
+      // Actualizar la fila existente en vez de agregar una nueva
+      const idx=app.raw.findIndex(r=>r['Local']===VF_EDIT.local && r['FECHA']===VF_EDIT.origFecha);
+      if(idx!==-1){
+        const row=app.raw[idx];
+        row['FECHA']=fecha; row['Local']=local; row['Ubicación']=ubic; row['Ubicacion']=ubic; row['DIA']=dia;
+        row._zona=extractZona(ubic);
+        Object.keys(app.brandCols).forEach(brand=>{
+          (app.brandCols[brand]||[]).forEach(col=>{ row[col]=String(productos[col]!==undefined?productos[col]:''); });
+        });
+      }
+    } else {
+      // La visita quedó confirmada en el spreadsheet — recién ahora se refleja acá
+      const newRow={FECHA:fecha, Local:local, 'Ubicación':ubic, 'Ubicacion':ubic, _zona:extractZona(ubic)};
+      Object.keys(app.brandCols).forEach(brand=>{
+        (app.brandCols[brand]||[]).forEach(col=>{
+          newRow[col]=String(productos[col]!==undefined?productos[col]:'');
+        });
       });
-    });
-    // Copiar otras columnas vacías para mantener estructura
-    if(app.raw.length){ Object.keys(app.raw[0]).forEach(k=>{ if(!(k in newRow)) newRow[k]=''; }); }
-    app.raw.push(newRow);
+      // Copiar otras columnas vacías para mantener estructura
+      if(app.raw.length){ Object.keys(app.raw[0]).forEach(k=>{ if(!(k in newRow)) newRow[k]=''; }); }
+      app.raw.push(newRow);
+    }
     setPeriod(app.periodDays);
     renderFaltantes();
     renderAlertas();
 
-    // Guardar nota si hay texto
+    // Guardar nota. Si se está editando y cambiaron local/fecha, además hay
+    // que borrar la nota vieja (quedaría huérfana bajo la clave anterior).
     const notaTexto=document.getElementById('vf-nota').value;
-    if(notaTexto.trim()) saveNota(local, fecha, notaTexto);
+    if(isEdit && (VF_EDIT.local!==local || VF_EDIT.origFecha!==fecha)){
+      saveNota(VF_EDIT.local, VF_EDIT.origFecha, '');
+    }
+    if(notaTexto.trim() || isEdit) saveNota(local, fecha, notaTexto);
 
-    // Subir fotos a Drive vía Apps Script
+    // Subir fotos nuevas a Drive vía Apps Script (las que ya tenía no se tocan)
     if(VF_PHOTOS.length>0&&scriptUrl){
       const fotos=VF_PHOTOS.map(p=>p.dataUrl.replace(/^data:image\/\w+;base64,/,''));
       const dp=await postAction({action:'savePhoto',local,fecha,fotos, ..._authFields(app.viewZone)});
