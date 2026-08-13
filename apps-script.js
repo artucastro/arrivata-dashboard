@@ -80,6 +80,15 @@ function _findHeaderRow(sheet) {
   return { headers: values[hIdx], hIdx: hIdx };
 }
 
+// Normaliza una celda de FECHA a "dd/MM/yyyy": Sheets guarda fechas como
+// objeto Date internamente (no como el string que mandó el cliente), así
+// que compararlas con === directo nunca matchea. Mismo criterio que usa
+// getVisitas (fmtCell) para las fechas que le manda al dashboard.
+function _fmtFecha(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+  return String(v || '').trim();
+}
+
 // Arma la fila a escribir (nueva visita o edición de una existente) según
 // el orden real de columnas de la hoja. Compartida por saveVisita/updateVisita.
 function _buildVisitaRow(headers, data, target) {
@@ -592,7 +601,7 @@ function doPost(e) {
       const origFecha = String(data.origFecha || '').trim();
       let rowIdx = -1;
       for (let i = hIdx + 1; i < allValues.length; i++) {
-        const fechaMatch = String(allValues[i][0]).trim() === origFecha;
+        const fechaMatch = _fmtFecha(allValues[i][0]) === origFecha;
         const localMatch = localIdx === -1 || String(allValues[i][localIdx]).trim() === origLocal;
         if (fechaMatch && localMatch) { rowIdx = i; break; }
       }
