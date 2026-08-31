@@ -45,22 +45,65 @@ function _authSupervisor(username, password) {
   return sup;
 }
 
-function _requireAdmin(data) {
+// ── Tokens de sesión ─────────────────────────────────────────
+// La identidad de un supervisor logueado viaja como un token opaco con
+// vencimiento (1 h), no como su contraseña real. El token se emite en el
+// login (doPost) y se guarda en CacheService: token -> perfil del supervisor.
+const _TOKEN_TTL_SECONDS = 3600; // igual al VERIFY_TTL_MS del frontend
+
+function _issueToken(username, sup) {
+  const token = Utilities.getUuid();
+  CacheService.getScriptCache().put('token|' + token, JSON.stringify({
+    username: username,
+    name: sup.name,
+    zona: sup.zona || '',
+    isAdmin: sup.isAdmin || false
+  }), _TOKEN_TTL_SECONDS);
+  return token;
+}
+
+// Resuelve la identidad del actor de una operación de escritura:
+//  a) por `token` de sesión (mecanismo actual);
+//  b) si no hay token, por `username` + `password` (compatibilidad con
+//     sesiones abiertas durante la migración — clientes viejos que todavía
+//     reenvían la contraseña);
+//  c) si ninguno es válido, rechaza.
+// Devuelve { sup, username } o { error, expired? }.
+function _resolveTokenOrPassword(data) {
+  if (data.token) {
+    const raw = CacheService.getScriptCache().get('token|' + data.token);
+    if (raw) {
+      try {
+        const t = JSON.parse(raw);
+        const sup = _getSupervisorRaw(t.username);
+        if (sup) return { sup: sup, username: t.username };
+      } catch (_) {}
+    }
+    return { error: 'Sesión vencida — volvé a iniciar sesión', expired: true };
+  }
   const sup = _authSupervisor(data.username, data.password);
-  if (!sup || !sup.isAdmin) return null;
-  return sup;
+  if (!sup) return { error: 'Usuario o contraseña incorrectos' };
+  return { sup: sup, username: data.username };
+}
+
+function _requireAdmin(data) {
+  const auth = _resolveTokenOrPassword(data);
+  if (auth.error || !auth.sup || !auth.sup.isAdmin) return null;
+  return auth.sup;
 }
 
 // Resuelve a qué supervisor (dueño de spreadsheet) apunta una operación
 // de escritura, validando que quien la pide esté autorizado a hacerlo.
 function _resolveTarget(data) {
-  const actor = _authSupervisor(data.username, data.password);
-  if (!actor) return { error: 'Usuario o contraseña incorrectos' };
-  const targetUsername = data.targetUsername || data.username;
-  if (targetUsername !== data.username && !actor.isAdmin) {
+  const auth = _resolveTokenOrPassword(data);
+  if (auth.error) return { error: auth.error, expired: auth.expired };
+  const actor = auth.sup;
+  const actorUsername = auth.username;
+  const targetUsername = data.targetUsername || actorUsername;
+  if (targetUsername !== actorUsername && !actor.isAdmin) {
     return { error: 'No autorizado para editar esta zona' };
   }
-  const target = targetUsername === data.username ? actor : _getSupervisorRaw(targetUsername);
+  const target = targetUsername === actorUsername ? actor : _getSupervisorRaw(targetUsername);
   if (!target) return { error: 'Supervisor destino no encontrado' };
   return { actor: actor, target: target, targetUsername: targetUsername };
 }
@@ -193,24 +236,31 @@ function _collectRowsFromSpreadsheet(ss, sheetName, canonHeaders, dataRows) {
 function doGet(e) {
   const action = e.parameter.action || '';
 
-  // ── Login de supervisor ────────────────────────────────────
+  // ── Login de supervisor (GET — compatibilidad) ─────────────
+  // El login nuevo va por doPost (no deja la contraseña en el querystring ni
+  // en los logs de Google), pero se mantiene esta variante GET mientras el
+  // frontend viejo cacheado la siga usando. Emite el mismo token que doPost,
+  // así una vez que el frontend se actualiza esta rama queda sin uso.
   if (action === 'login') {
-    const sup = _authSupervisor(e.parameter.u || '', e.parameter.p || '');
+    const username = e.parameter.u || '';
+    const sup = _authSupervisor(username, e.parameter.p || '');
     if (!sup) {
-      const exists = _getSupervisorRaw(e.parameter.u || '');
+      const exists = _getSupervisorRaw(username);
       return _ok({ ok: false, error: exists ? 'Contraseña incorrecta' : 'Usuario no encontrado' });
     }
-    return _ok({ ok: true, supervisor: {
-      name: sup.name, username: e.parameter.u, zona: sup.zona, isAdmin: sup.isAdmin || false
+    return _ok({ ok: true, token: _issueToken(username, sup), supervisor: {
+      name: sup.name, username: username, zona: sup.zona, isAdmin: sup.isAdmin || false
     }});
   }
 
   // ── Crear spreadsheet nuevo para un supervisor (solo admin) ──
-  // Va por GET (no por doPost) para poder leer el spreadsheetId/url de vuelta:
-  // los POST a este script se mandan con mode:'no-cors' (limitación de Apps
-  // Script con CORS en POST) y por lo tanto la respuesta queda inaccesible.
+  // Va por GET para poder leer el spreadsheetId/url de vuelta. El frontend ya
+  // no tiene la contraseña del admin (solo el token de sesión), así que este
+  // endpoint acepta `token` además del par u/p que se usa en invocaciones
+  // manuales. Las otras acciones admin por GET (restyleSheet, clearVisitRows,
+  // removeFilter, getDebugLog) no se llaman desde el frontend y siguen igual.
   if (action === 'createSupervisorSheet') {
-    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p, token: e.parameter.token })) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
     const template = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
@@ -449,6 +499,26 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
 
+    // ── Login de supervisor → emite token de sesión ──────────
+    // Recibe u/p en el body (no en el querystring). Devuelve un token opaco
+    // con TTL de 1 h; el cliente lo guarda y lo reenvía en cada escritura
+    // en vez de la contraseña real.
+    if (data.action === 'login') {
+      const username = data.u || data.username || '';
+      const sup = _authSupervisor(username, data.p || data.password || '');
+      if (!sup) {
+        const exists = _getSupervisorRaw(username);
+        return _ok({ ok: false, error: exists ? 'Contraseña incorrecta' : 'Usuario no encontrado' });
+      }
+      return _ok({
+        ok: true,
+        token: _issueToken(username, sup),
+        supervisor: {
+          name: sup.name, username: username, zona: sup.zona, isAdmin: sup.isAdmin || false
+        }
+      });
+    }
+
     // ── Crear supervisor (solo admin) ────────────────────────
     if (data.action === 'createSupervisor') {
       if (!_requireAdmin(data)) return _ok({ ok: false, error: 'No autorizado' });
@@ -471,7 +541,7 @@ function doPost(e) {
     // ── Guardar fotos en Drive ───────────────────────────────
     if (data.action === 'savePhoto') {
       const resolved = _resolveTarget(data);
-      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       const local = data.local || '';
       const fecha = data.fecha || '';
       const b64List = data.fotos || [];
@@ -496,7 +566,7 @@ function doPost(e) {
     // ── Guardar locales base de un supervisor (autocompletado) ──
     if (data.action === 'saveLocalesBase') {
       const resolved = _resolveTarget(data);
-      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       PropertiesService.getScriptProperties().setProperty(
         'localesbase|' + resolved.targetUsername, JSON.stringify(data.locales || []));
       return _ok();
@@ -505,7 +575,7 @@ function doPost(e) {
     // ── Guardar datos del local ──────────────────────────────
     if (data.action === 'saveLocalData') {
       const resolved = _resolveTarget(data);
-      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       PropertiesService.getScriptProperties().setProperty(
         'localdata|' + data.local, JSON.stringify(data.datos || {}));
       return _ok();
@@ -514,7 +584,7 @@ function doPost(e) {
     // ── Guardar nota ─────────────────────────────────────────
     if (data.action === 'saveNota') {
       const resolved = _resolveTarget(data);
-      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       const key = 'nota|' + data.local + '|' + data.fecha;
       if (data.texto && data.texto.trim()) {
         PropertiesService.getScriptProperties().setProperty(key, data.texto.trim());
@@ -527,7 +597,7 @@ function doPost(e) {
     // ── Guardar visita ────────────────────────────────────────
     if (data.action === 'saveVisita') {
       const resolved = _resolveTarget(data);
-      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       const target = resolved.target;
 
       // Apps Script ejecuta este doPost por completo y recién DESPUÉS redirige
@@ -583,7 +653,7 @@ function doPost(e) {
     // la edición ya se guardó, no hace falta el mismo lock que saveVisita).
     if (data.action === 'updateVisita') {
       const resolved = _resolveTarget(data);
-      if (resolved.error) return _ok({ ok: false, error: resolved.error });
+      if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       const target = resolved.target;
 
       const ss = _openSpreadsheetForSupervisor(target);
@@ -621,14 +691,26 @@ function doPost(e) {
     // navegador. Ahora el navegador solo manda el prompt; este proxy hace la
     // llamada real y devuelve la respuesta de Anthropic tal cual.
     if (data.action === 'callClaude') {
-      const actor = _authSupervisor(data.username, data.password);
-      if (!actor) return _ok({ ok: false, error: 'Usuario o contraseña incorrectos' });
+      const auth = _resolveTokenOrPassword(data);
+      if (auth.error) return _ok({ ok: false, error: auth.error, expired: auth.expired });
       const apiKey = _props().getProperty('ANTHROPIC_API_KEY');
       if (!apiKey) return _ok({ ok: false, error: 'Falta configurar la API key de Anthropic en el proyecto de Apps Script (Configuración del proyecto → Propiedades del script → ANTHROPIC_API_KEY).' });
 
+      // Sonnet 5 corre "thinking" adaptativo por defecto cuando no se especifica,
+      // y en informes largos el razonamiento interno se come TODO el presupuesto
+      // de max_tokens → la respuesta vuelve sin bloque de texto y el dashboard
+      // lo ve como "Sin respuesta en etapa 1". Para generar informes queremos
+      // todo el presupuesto en la salida, así que lo desactivamos explícitamente.
+      //
+      // Piso de max_tokens en 12000: los informes cortos igual cierran solos
+      // mucho antes (max_tokens es un techo, no un objetivo — solo se paga lo
+      // generado), pero el Complejo arma TODO en una sola respuesta (todas las
+      // zonas + gráficos + conclusiones) y a 4096 se cortaba antes del final.
+      // Con thinking apagado cada llamada termina en ~35-60 s.
       const payload = {
         model: 'claude-sonnet-5',
-        max_tokens: data.maxTokens || 2048,
+        max_tokens: Math.max(Number(data.maxTokens) || 0, 12000),
+        thinking: { type: 'disabled' },
         messages: [{ role: 'user', content: data.content }]
       };
       const resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {

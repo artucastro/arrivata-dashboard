@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lato:wght@300;400;700&display=swap');
@@ -53,6 +53,7 @@
   .btn-purple { background:var(--gold);color:#fff; } .btn-purple:hover { background:var(--gold-dark); }
   .btn-ghost  { background:transparent;color:var(--muted);border:1px solid var(--border); } .btn-ghost:hover { background:var(--cream-2);color:var(--text); }
   .btn-teal   { background:#0d9488;color:#fff; } .btn-teal:hover   { background:#0f766e; }
+  .btn-slate  { background:#475569;color:#fff; } .btn-slate:hover  { background:#334155; }
   .btn:disabled { opacity:.5;cursor:not-allowed; }
 
   .file-drop{border:2px dashed var(--border);border-radius:8px;padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;user-select:none;background:#fff}
@@ -65,6 +66,11 @@
   .rtype-btn:last-child { border-right:none; }
   .rtype-btn:hover:not(.active-rtype) { background:var(--cream-2);color:var(--text); }
   .rtype-btn.active-rtype { background:#0d9488;color:#fff; }
+
+  .scope-btn { padding:6px 16px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;border-right:1px solid var(--border);background:#fff;color:var(--muted);transition:all .15s; }
+  .scope-btn:last-child { border-right:none; }
+  .scope-btn:hover:not(.active-scope) { background:var(--cream-2);color:var(--text); }
+  .scope-btn.active-scope { background:#475569;color:#fff; }
 
   .badge-si  { display:inline-block;background:#dcfce7;color:#16a34a;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:700; }
   .badge-no  { display:inline-block;background:#fee2e2;color:#dc2626;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:700; }
@@ -211,6 +217,8 @@
     .custom-range-row .bottom-row .btn { width:100% !important; justify-content:center; }
     .rtype-group { width:100% !important; }
     .rtype-btn { flex:1; }
+    .scope-group { width:100% !important; }
+    .scope-btn { flex:1; }
 
     /* Detail view */
     .det-topbar  { flex-direction:column !important; align-items:flex-start !important; gap:8px !important; }
@@ -239,10 +247,16 @@
     #print-report{ display:block !important; font-family:'Lato',sans-serif; color:#1a1a1a; }
     #print-report h1{ font-family:'Playfair Display',serif; color:#8B1714; font-size:1.4rem; margin-bottom:4px; }
     #print-report h2{ font-family:'Playfair Display',serif; color:#8B1714; font-size:1rem; margin:20px 0 8px; border-bottom:1.5px solid #e5d5c0; padding-bottom:4px; }
+    #print-report h3{ color:#7B6A55; font-size:.9rem; margin:14px 0 4px; }
+    #print-report p{ font-size:.85rem; line-height:1.6; margin-bottom:6px; }
+    #print-report ul,#print-report ol{ margin:0 0 8px 20px; font-size:.85rem; line-height:1.55; }
+    #print-report li{ margin-bottom:3px; }
     #print-report table{ width:100%; border-collapse:collapse; font-size:.82rem; margin-bottom:12px; }
     #print-report th{ background:#f5ede0; text-align:left; padding:5px 8px; font-weight:700; }
     #print-report td{ padding:4px 8px; border-bottom:1px solid #f0e8d8; }
     #print-report .pr-badge{ display:inline-block; padding:1px 8px; border-radius:99px; font-weight:700; font-size:.75rem; }
+    #print-report .pr-meta{ font-size:.78rem; color:#7B6A55; margin-bottom:14px; }
+    #print-report img{ max-width:100%; }
     @page{ margin:1.5cm; }
   }
   #print-report{ display:none; }
@@ -839,8 +853,18 @@
         <div>
           <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text)">Reporte con IA</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Análisis generado con Claude (Anthropic) · requiere identificarte como supervisor</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+            <span style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap">Alcance</span>
+            <div id="report-scope-group" class="scope-group" style="display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:#fff">
+              <button class="scope-btn active-scope" data-v="all" onclick="setReportScope(this)">Global</button>
+            </div>
+          </div>
         </div>
         <div class="report-btns" style="display:flex;gap:8px">
+          <button id="btn-dia" class="btn btn-slate" onclick="generateReport('diario')" style="font-size:.82rem">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Reporte Diario
+          </button>
           <button id="btn-sem" class="btn btn-blue" onclick="generateReport('semanal')" style="font-size:.82rem">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             Reporte Semanal
@@ -903,9 +927,9 @@
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
               Copiar
             </button>
-            <button class="btn btn-ghost" id="btn-word" onclick="downloadAsWord()" style="padding:4px 10px;font-size:.75rem">
+            <button class="btn btn-ghost" id="btn-pdf" onclick="downloadReportAsPDF()" style="padding:4px 10px;font-size:.75rem">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              Descargar Word
+              Descargar PDF
             </button>
           </div>
         </div>
@@ -1142,7 +1166,7 @@
 
 <script>
 // ── Constants ────────────────────────────────────────────────
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz679qThOXRzL8LMrszQaSa7AmDA8K6d7LzQ_uNc_V-qlzKk1QAzDPLbU4jEC31dh4ZWA/exec';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwxvvZZKtVbho8D0-gJexf8apr8I6miKKDYj57R8FINWYq8N489ztlHxt8ScQRFDXiF1w/exec';
 
 const BRAND_SUFFIXES = {
   ARRIVATA:  [' AR'],
@@ -1220,7 +1244,12 @@ async function postAction(payload, retries=0){
         if(attempt<retries){ await new Promise(res=>setTimeout(res,600)); continue; }
         return {ok:false, error:'Error HTTP '+r.status};
       }
-      return await r.json();
+      const j=await r.json();
+      // El backend avisa expired:true cuando el token de sesión venció o no
+      // es válido — limpiamos la sesión local para que la próxima operación
+      // vuelva a pedir usuario/contraseña.
+      if(j && j.expired) _clearVerifiedSession();
+      return j;
     } catch(e){
       if(attempt<retries){ await new Promise(res=>setTimeout(res,600)); continue; }
       return {ok:false, error:'Sin conexión — revisá tu internet e intentá de nuevo.'};
@@ -1323,7 +1352,7 @@ async function cargarListaSupervisores(){
             <div style="font-weight:700;font-size:.85rem">${esc(s.name)}${s.isAdmin?' <span style="font-size:.65rem;background:#fef2f2;color:var(--red);padding:1px 7px;border-radius:99px;font-weight:700">Admin</span>':''}</div>
             <div style="font-size:.72rem;color:var(--muted)">@${esc(s.username)} &middot; ${esc(s.zona||'Sin zona')}</div>
           </div>
-          ${!s.isAdmin?`<button onclick="eliminarSupervisor('${esc(s.username)}')" style="font-size:.72rem;padding:3px 10px;border-radius:8px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;font-weight:700;cursor:pointer">Eliminar</button>`:''}
+          ${!s.isAdmin?`<button onclick="eliminarSupervisor('${escJs(s.username)}')" style="font-size:.72rem;padding:3px 10px;border-radius:8px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;font-weight:700;cursor:pointer">Eliminar</button>`:''}
         </div>`).join('');
   } catch(e){
     list.innerHTML='<div style="color:#dc2626;font-size:.8rem">Error al cargar supervisores.</div>';
@@ -1340,10 +1369,10 @@ async function crearSpreadsheetSupervisor(){
   const msgEl=document.getElementById('ns-spreadsheet-msg');
   if(!app.cfg.scriptUrl){ msgEl.textContent='Falta URL del Apps Script.'; msgEl.style.color='#dc2626'; return; }
   const auth=_authFields();
-  if(!auth.username||!auth.password){ msgEl.textContent='Identificate como admin primero.'; msgEl.style.color='#dc2626'; return; }
+  if(!auth.username||!auth.token){ msgEl.textContent='Identificate como admin primero.'; msgEl.style.color='#dc2626'; return; }
   msgEl.textContent='Creando spreadsheet…'; msgEl.style.color='var(--muted)';
   try{
-    const url=`${app.cfg.scriptUrl}?action=createSupervisorSheet&u=${encodeURIComponent(auth.username)}&p=${encodeURIComponent(auth.password)}&nombre=${encodeURIComponent(nombre)}`;
+    const url=`${app.cfg.scriptUrl}?action=createSupervisorSheet&u=${encodeURIComponent(auth.username)}&token=${encodeURIComponent(auth.token)}&nombre=${encodeURIComponent(nombre)}`;
     const r=await fetch(url,{redirect:'follow'});
     const d=await r.json();
     if(d.ok){
@@ -1608,10 +1637,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // cerrar la pestaña/navegador)
     const supStr=sessionStorage.getItem('arr_supervisor');
     if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
-    const verAt=parseInt(sessionStorage.getItem('arr_verified_at')||'0',10);
-    if(!isNaN(verAt)) _verifiedAt=verAt;
-    const pwdStr=sessionStorage.getItem('arr_verified_pwd');
-    if(pwdStr) _verifiedPwd=pwdStr;
+    const tokenStr=sessionStorage.getItem('arr_verified_token');
+    if(tokenStr){
+      _verifiedToken=tokenStr;
+      const verAt=parseInt(sessionStorage.getItem('arr_verified_at')||'0',10);
+      if(!isNaN(verAt)) _verifiedAt=verAt;
+    } else {
+      // Sesión anterior al token (guardaba la contraseña en claro) o nunca
+      // verificada: no reusar nada — se fuerza re-login en la próxima
+      // operación que lo requiera.
+      sessionStorage.removeItem('arr_verified_pwd');
+      sessionStorage.removeItem('arr_verified_at');
+    }
     // Si ya te identificaste como supervisor, arrancás viendo tu propia zona;
     // si no (contraseña compartida, ej. gerentes/CEOs), arranca en Global.
     if(app.supervisor&&app.supervisor.username) app.viewZone=app.supervisor.username;
@@ -1750,7 +1787,7 @@ async function loadSupervisors(){
   try{
     const r=await fetch(app.cfg.scriptUrl+'?action=getSupervisors',{redirect:'follow'});
     const d=await r.json();
-    if(d.ok){ app.allSupervisors=d.supervisors||[]; renderSidebar(); }
+    if(d.ok){ app.allSupervisors=d.supervisors||[]; renderSidebar(); renderReportScope(); }
   } catch(e){}
 }
 
@@ -1760,7 +1797,7 @@ function renderSidebar(){
   const sups=[...(app.allSupervisors||[])].sort((a,b)=>a.name.localeCompare(b.name));
   const myUser=(app.supervisor&&app.supervisor.username)||'';
   const itemHtml=(value,name,sub,mine)=>`
-    <div class="sb-item${app.viewZone===value?' active':''}" onclick="selectZone('${esc(value)}')">
+    <div class="sb-item${app.viewZone===value?' active':''}" onclick="selectZone('${escJs(value)}')">
       <div class="sb-name">${esc(name)}${mine?' · vos':''}</div>
       ${sub?`<div class="sb-sub">${esc(sub)}</div>`:''}
     </div>`;
@@ -1772,7 +1809,7 @@ function renderSidebar(){
   // Pills de zona en la navbar mobile (mismo dato, forma compacta)
   const pills=document.getElementById('nav-zone-pills');
   if(pills){
-    const pillHtml=(value,label)=>`<button type="button" class="zpill${app.viewZone===value?' active':''}" onclick="selectZone('${esc(value)}')">${esc(label)}</button>`;
+    const pillHtml=(value,label)=>`<button type="button" class="zpill${app.viewZone===value?' active':''}" onclick="selectZone('${escJs(value)}')">${esc(label)}</button>`;
     pills.innerHTML=pillHtml('all','Global')+sups.map(s=>pillHtml(s.username,s.name)).join('');
   }
 }
@@ -1839,7 +1876,7 @@ function detectBrands(headers){
   });
   return brands;
 }
-function extractZona(ub){ const i=ub.lastIndexOf('/'); return i===-1?ub.toUpperCase().trim()||'—':ub.slice(i+1).trim().toUpperCase()||'—'; }
+function extractZona(ub){ const i=Math.max(ub.lastIndexOf('/'),ub.lastIndexOf('\\')); return i===-1?ub.toUpperCase().trim()||'—':ub.slice(i+1).trim().toUpperCase()||'—'; }
 
 // ── Period ───────────────────────────────────────────────────
 function setPeriod(days){
@@ -2048,11 +2085,11 @@ function renderTable(){
       const nota=localName?getNota(localName,fechaVisita):'';
       const fotos=localName?((app._fotos[localName]||{})[fechaVisita]||[]):[];
       const notaFotoBtns=
-        (nota?`<button onclick="verNota('${esc(localName)}','${esc(fechaVisita)}')" title="Ver nota"
+        (nota?`<button onclick="verNota('${escJs(localName)}','${escJs(fechaVisita)}')" title="Ver nota"
           style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;line-height:1;vertical-align:middle">${ICON_NOTA}</button>`:'')+
-        (fotos.length?`<button onclick="verFotos('${esc(localName)}','${esc(fechaVisita)}')" title="Ver ${fotos.length} foto(s)"
+        (fotos.length?`<button onclick="verFotos('${escJs(localName)}','${escJs(fechaVisita)}')" title="Ver ${fotos.length} foto(s)"
           style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-size:.68rem;font-weight:700;line-height:1;vertical-align:middle;display:inline-flex;align-items:center;gap:3px">${ICON_FOTO} ${fotos.length}</button>`:'')+
-        (localName?`<button onclick="editVisita('${esc(localName)}','${esc(fechaVisita)}')" title="Editar visita"
+        (localName&&canEditCurrentZone()?`<button onclick="editVisita('${escJs(localName)}','${escJs(fechaVisita)}')" title="Editar visita"
           style="margin-left:5px;padding:2px 7px;border-radius:99px;border:1px solid #7B6A55;background:#F5EDE0;color:#7B6A55;cursor:pointer;line-height:1;vertical-align:middle">${ICON_EDIT}</button>`:'');
       return `<tr>
         <td style="color:#7B6A55;white-space:nowrap">${esc(fechaVisita||'—')}</td>
@@ -2199,7 +2236,7 @@ function renderAlertas(){
         <span style="font-size:.75rem;font-weight:700;color:${statusColor[a.prev]}">${a.prev}</span>
         <span style="color:var(--muted)">&rarr;</span>
         <span style="font-size:.75rem;font-weight:700;color:${statusColor[a.curr]}">${a.curr}</span>
-        <button onclick="openDetail('${esc(a.local)}')" style="margin-left:6px;font-size:.72rem;padding:3px 10px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--red);font-weight:700;cursor:pointer">Ver local</button>
+        <button onclick="openDetail('${escJs(a.local)}')" style="margin-left:6px;font-size:.72rem;padding:3px 10px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--red);font-weight:700;cursor:pointer">Ver local</button>
       </div>
     </div>`;
   }).join('');
@@ -2456,15 +2493,15 @@ function renderDetailTable(visits, arrCols){
     const fotos=(app._fotos[localNombre]||{})[fechaVisita]||[];
     return `<tr>
       <td style="white-space:nowrap;font-weight:700;color:#7B6A55">${esc(fechaVisita||'—')}</td>
-      <td style="font-size:.78rem;color:#C5B49A">${esc(v['DIA']||'')}</td>
+      <td style="font-size:.78rem;color:#C5B49A">${esc(v['DIA']||v['Día']||v['DÍA']||v['Dia']||'')}</td>
       <td style="white-space:nowrap">
         <span class="${hasAny?'badge-si':'badge-no'}">${hasAny?'Presente':'Ausente'}</span>
-        ${nota?`<button onclick="verNota('${esc(localNombre)}','${esc(fechaVisita)}')"
+        ${nota?`<button onclick="verNota('${escJs(localNombre)}','${escJs(fechaVisita)}')"
           style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #A07830;background:#FFFBF0;color:#A07830;cursor:pointer;font-weight:700">Ver nota</button>`:''}
-        ${fotos.length?`<button onclick="verFotos('${esc(localNombre)}','${esc(fechaVisita)}')"
+        ${fotos.length?`<button onclick="verFotos('${escJs(localNombre)}','${escJs(fechaVisita)}')"
           style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${ICON_FOTO} ${fotos.length}</button>`:''}
-        <button onclick="editVisita('${esc(localNombre)}','${esc(fechaVisita)}')" title="Editar visita"
-          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #7B6A55;background:#F5EDE0;color:#7B6A55;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${ICON_EDIT} Editar</button>
+        ${canEditCurrentZone()?`<button onclick="editVisita('${escJs(localNombre)}','${escJs(fechaVisita)}')" title="Editar visita"
+          style="margin-left:6px;font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid #7B6A55;background:#F5EDE0;color:#7B6A55;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:4px">${ICON_EDIT} Editar</button>`:''}
       </td>
       ${cells}
     </tr>`;
@@ -2478,7 +2515,9 @@ async function generateReport(type){
   // Los reportes con IA pasan por el Apps Script (que guarda la key de Anthropic
   // del lado del servidor) y quedan restringidos a supervisores identificados —
   // si todavía no se identificó nadie en esta sesión, pedirlo primero.
-  if(!app.supervisor){ abrirVerificacion('generarReporte', type); return; }
+  // Sin supervisor identificado, o con la sesión ya vencida (el token dura lo
+  // mismo que VERIFY_TTL_MS): pedir identificación antes de llamar a la IA.
+  if(!app.supervisor || (Date.now()-_verifiedAt)>=VERIFY_TTL_MS){ abrirVerificacion('generarReporte', type); return; }
 
   const corsEl=document.getElementById('cors-warn');
   const apiErrEl=document.getElementById('api-err-warn');
@@ -2501,7 +2540,7 @@ async function generateReport(type){
     }
   }
 
-  const btnId=type==='semanal'?'btn-sem':type==='mensual'?'btn-men':'btn-custom';
+  const btnId=type==='diario'?'btn-dia':type==='semanal'?'btn-sem':type==='mensual'?'btn-men':'btn-custom';
   const btn=document.getElementById(btnId);
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Generando...';
   const chartsEl=document.getElementById('report-charts');
@@ -2517,72 +2556,109 @@ async function generateReport(type){
   const instrucciones = (document.getElementById('inp-instrucciones')?.value||'').trim();
   const fileBlocks = buildFileBlocks();
   const maxTokens = rtype==='complejo' ? 4096 : 2048;
+  const scope = getReportScope();
+  const scopeLabel = getReportScopeLabel(scope);
   try {
+    // ── Datos del alcance elegido (Global o un supervisor puntual) ──
+    // Se piden siempre en fresco, sin tocar app.raw ni la vista principal del
+    // dashboard, para poder generar un reporte de un supervisor distinto al
+    // que se está mirando ahora mismo.
+    const data = await fetchVisitasRows(scope);
+
     // ── Validación de datos antes de llamar a la API ──────────
-    if(!app.raw||app.raw.length===0) throw new Error('No hay datos cargados. Actualizá el dashboard primero.');
+    if(!data||data.length===0) throw new Error(`No hay datos cargados para ${scopeLabel}. Actualizá el dashboard primero.`);
     if(app.brandCols.ARRIVATA.length===0) throw new Error('No se detectaron columnas de productos Arrivata. Verificá que las columnas del sheet tengan el sufijo " AR" (espacio + AR).');
     if(type==='personalizado'&&fromDate&&toDate){
-      const rowsEnRango=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
-      if(rowsEnRango.length===0) throw new Error('No hay visitas registradas en el período seleccionado. Verificá las fechas.');
+      const rowsEnRango=data.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
+      if(rowsEnRango.length===0) throw new Error(`No hay visitas de ${scopeLabel} en el período seleccionado. Verificá las fechas.`);
       const conArrivata=rowsEnRango.filter(r=>hasPresence(r,'ARRIVATA')).length;
       if(conArrivata===0){
-        const msg=`No se registró presencia de Arrivata en ninguna visita del período (${rowsEnRango.length} visitas totales). El informe no tendría datos reales para analizar.`;
+        const msg=`No se registró presencia de Arrivata en ninguna visita del período (${rowsEnRango.length} visitas totales de ${scopeLabel}). El informe no tendría datos reales para analizar.`;
         if(!confirm(msg+'\n\n¿Generar el informe de todas formas?')) throw new Error('Generación cancelada.');
       }
     }
     let reportText;
 
     if(type==='personalizado' && rtype==='profesional'){
-      // ── Dos llamadas encadenadas para garantizar el informe completo ──
-      const stats = getProfStats(fromDate, toDate);
+      // Informe en dos etapas para que salga completo. Si una etapa falla, se
+      // degrada con elegancia (usa la etapa 1 sola, o cae a un informe de una
+      // sola llamada) en vez de dejar al usuario sin nada.
+      const stats = getProfStats(fromDate, toDate, data);
 
-      // Etapa 1: análisis de datos
-      const r1 = await callAnthropic(buildProfPart1(stats, instrucciones), 8192, fileBlocks);
-      if(!r1?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 1 del análisis');
-      const text1 = r1.content[0].text;
+      let text1='';
+      try {
+        const r1 = await callAnthropic(buildProfPart1(stats, instrucciones), 8192, fileBlocks);
+        text1 = extractReportText(r1);
+      } catch(e1){ text1=''; }
 
-      // Actualizar indicador
-      const statusEl=document.getElementById('rpt-status');
-      if(statusEl) statusEl.textContent='Generando estrategia y conclusión (2/2)...';
-
-      // Etapa 2: estrategia + conclusión final
-      const r2 = await callAnthropic(buildProfPart2(stats, instrucciones), 6000, fileBlocks);
-      if(!r2?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 2 del análisis');
-
-      reportText = text1 + '\n\n' + r2.content[0].text;
-    } else if(type==='personalizado' && rtype==='cadenas'){
-      const stats = getChainStats(fromDate, toDate);
-      // Etapa 1: resumen + análisis por cadena + comparación competitiva
-      const c1 = await callAnthropic(buildChainPart1(stats, instrucciones), 8192, fileBlocks);
-      if(!c1?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 1 del análisis de cadenas');
-      const chainText1 = c1.content[0].text;
-      const statusEl2=document.getElementById('rpt-status');
-      if(statusEl2) statusEl2.textContent='Generando rankings y plan de acción (2/2)...';
-      // Etapa 2: ranking de productos + plan de acción + conclusión
-      const c2 = await callAnthropic(buildChainPart2(stats, instrucciones), 6000, fileBlocks);
-      if(!c2?.content?.[0]?.text) throw new Error('Sin respuesta en etapa 2 del análisis de cadenas');
-      reportText = chainText1 + '\n\n' + c2.content[0].text;
-    } else {
-      const r = await callAnthropic(buildPrompt(type,fromDate,toDate,rtype,instrucciones), maxTokens, fileBlocks);
-      if(!r?.content?.[0]?.text){
-        if(r?.error) throw new Error(r.error.message||'Error de API');
-        throw new Error('Respuesta inesperada: '+JSON.stringify(r).slice(0,120));
+      if(text1){
+        const statusEl=document.getElementById('rpt-status');
+        if(statusEl) statusEl.textContent='Generando estrategia y conclusión (2/2)...';
+        let text2='';
+        try {
+          const r2 = await callAnthropic(buildProfPart2(stats, instrucciones), 6000, fileBlocks);
+          text2 = extractReportText(r2);
+        } catch(e2){ text2=''; }
+        reportText = text2 ? (text1 + '\n\n' + text2) : text1;
+      } else {
+        // La versión en 2 etapas no arrancó → informe de una sola llamada, sin
+        // los archivos adjuntos (que suelen ser lo que no deja lugar para la
+        // respuesta), para no dejar al usuario con las manos vacías.
+        const rf = await callAnthropic(buildPrompt('personalizado',fromDate,toDate,'complejo',instrucciones,data), 4096, []);
+        reportText = extractReportText(rf);
+        if(!reportText) throw new Error('No se pudo generar el informe'+_reportWhy(rf)+(fileBlocks.length?' — probá quitando los archivos de referencia':''));
       }
-      reportText = r.content[0].text;
+    } else if(type==='personalizado' && rtype==='cadenas'){
+      const stats = getChainStats(fromDate, toDate, data);
+
+      let chainText1='';
+      try {
+        const c1 = await callAnthropic(buildChainPart1(stats, instrucciones), 8192, fileBlocks);
+        chainText1 = extractReportText(c1);
+      } catch(e1){ chainText1=''; }
+
+      if(chainText1){
+        const statusEl2=document.getElementById('rpt-status');
+        if(statusEl2) statusEl2.textContent='Generando rankings y plan de acción (2/2)...';
+        let chainText2='';
+        try {
+          const c2 = await callAnthropic(buildChainPart2(stats, instrucciones), 6000, fileBlocks);
+          chainText2 = extractReportText(c2);
+        } catch(e2){ chainText2=''; }
+        reportText = chainText2 ? (chainText1 + '\n\n' + chainText2) : chainText1;
+      } else {
+        const rf = await callAnthropic(buildPrompt('personalizado',fromDate,toDate,'complejo',instrucciones,data), 4096, []);
+        reportText = extractReportText(rf);
+        if(!reportText) throw new Error('No se pudo generar el informe'+_reportWhy(rf)+(fileBlocks.length?' — probá quitando los archivos de referencia':''));
+      }
+    } else {
+      let r = await callAnthropic(buildPrompt(type,fromDate,toDate,rtype,instrucciones,data), maxTokens, fileBlocks);
+      reportText = extractReportText(r);
+      if(!reportText && fileBlocks.length){
+        // Los archivos de referencia suelen ser lo que infla el pedido hasta
+        // no dejar lugar para la respuesta — reintento sin ellos.
+        const statusEl3=document.getElementById('rpt-status');
+        if(statusEl3) statusEl3.textContent='Reintentando sin los archivos adjuntos...';
+        r = await callAnthropic(buildPrompt(type,fromDate,toDate,rtype,instrucciones,data), maxTokens, []);
+        reportText = extractReportText(r);
+      }
+      if(!reportText) throw new Error('La IA no devolvió texto'+_reportWhy(r)+(fileBlocks.length?' — probá quitando los archivos de referencia':''));
     }
 
     app.reportText = reportText;
     let title;
-    if(type==='semanal') title='Reporte Semanal — '+new Date().toLocaleDateString('es-AR');
+    if(type==='diario') title='Reporte Diario — '+new Date().toLocaleDateString('es-AR');
+    else if(type==='semanal') title='Reporte Semanal — '+new Date().toLocaleDateString('es-AR');
     else if(type==='mensual') title='Reporte Mensual — '+new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});
     else {
       const rtypeLabel=rtype==='complejo'?'Complejo':rtype==='profesional'?'Profesional':rtype==='cadenas'?'Por Cadena':'Simple';
       const fmtOpts={day:'numeric',month:'short',year:'numeric'};
       title='Reporte '+rtypeLabel+' — '+fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
     }
+    if(scope!=='all') title+=' · '+scopeLabel;
     document.getElementById('report-title').textContent=title;
     document.getElementById('report-output').innerHTML=marked.parse(app.reportText);
-    if(type==='personalizado'&&rtype==='profesional') renderReportCharts(fromDate,toDate);
+    if(type==='personalizado'&&rtype==='profesional') renderReportCharts(fromDate,toDate,data);
     document.getElementById('report-wrap').style.display='block';
   } catch(e){
     if(e instanceof TypeError){
@@ -2594,6 +2670,8 @@ async function generateReport(type){
   } finally {
     const ic='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
     const icCustom='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>';
+    document.getElementById('btn-dia').disabled=false;
+    document.getElementById('btn-dia').innerHTML=ic+' Reporte Diario';
     document.getElementById('btn-sem').disabled=false;
     document.getElementById('btn-sem').innerHTML=ic+' Reporte Semanal';
     document.getElementById('btn-men').disabled=false;
@@ -2603,20 +2681,59 @@ async function generateReport(type){
   }
 }
 
+// Anthropic puede anteponer bloques que no son de texto (p.ej. razonamiento)
+// antes del bloque de texto; buscar el primer bloque type:'text' en vez de
+// asumir que es siempre content[0].
+function extractReportText(r){
+  const block=(r?.content||[]).find(b=>b&&b.type==='text'&&b.text);
+  return block?block.text:'';
+}
+
+// Motivo legible de por qué una respuesta de la IA no trajo texto usable.
+function _reportWhy(r){
+  if(!r) return '';
+  if(r.ok===false && r.error) return ' ('+r.error+')';
+  if(r.error) return ' ('+(r.error.message||r.error.type||'error de API')+')';
+  if(r.stop_reason==='refusal') return ' (la IA no pudo generar el informe con estos datos)';
+  if(r.stop_reason) return ' (motivo: '+r.stop_reason+')';
+  try{ return ' — respuesta: '+JSON.stringify(r).slice(0,200); }catch(_){ return ''; }
+}
+
+// Errores de la API que NO tiene sentido reintentar (config o pedido inválido).
+function _errorApiEsPermanente(msg){
+  return /api key|prompt is too long|too long|demasiado larg|not_found|no such model|\bmodel:|invalid|contrase|no autoriz|sesi[oó]n|max_tokens[^]*>|\b401\b|\b403\b|\b404\b/i.test(String(msg||''));
+}
+
 // ── Anthropic API helper ──────────────────────────────────────
 // La llamada a Anthropic pasa por el Apps Script (acción "callClaude"), que
 // guarda la API key del lado del servidor — nunca llega al navegador. Ver
 // _authFields(): requiere estar identificado como supervisor para poder pedirlo.
+//
+// Generar un informe es idempotente (no escribe nada), así que reintenta ante
+// respuestas vacías, cortes de red o errores transitorios de la API: Apps
+// Script entrega a veces una respuesta trunca en el salto de redirect, y ese
+// era el motivo habitual del error "Sin respuesta en etapa 1".
 async function callAnthropic(prompt, maxTok, fileBlocks=[]){
   const content=[...fileBlocks,{type:'text',text:prompt}];
-  const d=await postAction({action:'callClaude', maxTokens:maxTok, content, ..._authFields()});
-  if(d && d.ok===false) throw new Error(d.error||'Error de API');
-  return d;
+  let last=null;
+  for(let intento=0; intento<3; intento++){
+    if(intento) await new Promise(res=>setTimeout(res, 900*intento));
+    const d=await postAction({action:'callClaude', maxTokens:maxTok, content, ..._authFields()});
+    last=d;
+    if(d && d.ok===false){
+      if(d.expired || _errorApiEsPermanente(d.error)) throw new Error(d.error||'Error de API');
+      continue; // error transitorio → reintentar
+    }
+    if(extractReportText(d)) return d;              // respuesta con texto
+    if(d && d.stop_reason==='max_tokens') return d; // texto parcial: lo usa el caller
+    // HTTP 200 sin texto usable (corte de Apps Script, refusal, etc.) → reintentar
+  }
+  throw new Error('La IA no devolvió texto'+_reportWhy(last));
 }
 
 // ── Professional report helpers ───────────────────────────────
-function getProfStats(fromDate, toDate){
-  const data=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
+function getProfStats(fromDate, toDate, sourceData){
+  const data=(sourceData||app.raw).filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
   const n=data.length;
   const fmtOpts={day:'numeric',month:'long',year:'numeric'};
   const periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
@@ -2745,16 +2862,17 @@ function buildProfPart2(s, instrucciones=''){
     `Usá SOLO los números del JSON. Tablas Markdown. Tono ejecutivo orientado a decisiones.`;
 }
 
-function buildPrompt(type, fromDate, toDate, rtype='simple', instrucciones=''){
+function buildPrompt(type, fromDate, toDate, rtype='simple', instrucciones='', sourceData){
+  const raw=sourceData||app.raw;
   let data, periodoLabel;
   if(type==='personalizado'&&fromDate&&toDate){
-    data=app.raw.filter(r=>{ const d=parseDate(r['FECHA']); return d&&d>=fromDate&&d<=toDate; });
+    data=raw.filter(r=>{ const d=parseDate(r['FECHA']); return d&&d>=fromDate&&d<=toDate; });
     const fmtOpts={day:'numeric',month:'long',year:'numeric'};
     periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
   } else {
-    const days=type==='semanal'?7:30;
-    data=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=new Date(Date.now()-days*864e5);});
-    periodoLabel=type==='semanal'?'última semana':'último mes';
+    const days=type==='diario'?1:type==='semanal'?7:30;
+    data=raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=new Date(Date.now()-days*864e5);});
+    periodoLabel=type==='diario'?'últimas 24 horas':type==='semanal'?'última semana':'último mes';
   }
   const n=data.length;
   const conArr=data.filter(r=>hasPresence(r,'ARRIVATA')).length;
@@ -2785,7 +2903,7 @@ function buildPrompt(type, fromDate, toDate, rtype='simple', instrucciones=''){
   }
 
   // simple (default)
-  const tipoReporte=type==='semanal'?'semanal':type==='mensual'?'mensual':('del período '+periodoLabel);
+  const tipoReporte=type==='diario'?'diario (últimas 24 horas)':type==='semanal'?'semanal':type==='mensual'?'mensual':('del período '+periodoLabel);
   const stats={periodoLabel,totalVisitas:n,visitasConArrivata:conArr,coberturaArrivata:arrPct,marcas:brandStats,zonas:zonaStats,productosArrivata:productStats(data)};
   return _instrBlock(instrucciones)+intro+`Generá un reporte ${tipoReporte} en español.\n\nDATOS:\n${JSON.stringify(stats,null,2)}\n\n## Resumen Ejecutivo\n## Métricas de Presencia por Marca\n## Productos Arrivata (ranking por presencia)\n## Análisis por Zona\n## Oportunidades y Alertas\n## Acciones Recomendadas (3-5 concretas)\n\nFormato Markdown, tono profesional, solo números reales del JSON.`;
 }
@@ -2796,6 +2914,48 @@ function setRtype(btn){
   btn.classList.add('active-rtype');
 }
 function getRtype(){ return document.querySelector('.rtype-btn.active-rtype')?.dataset.v||'simple'; }
+
+// ── Report scope selector (Global / supervisor) ───────────────
+function renderReportScope(){
+  const group=document.getElementById('report-scope-group');
+  if(!group) return;
+  const current=getReportScope();
+  const sups=[...(app.allSupervisors||[])].sort((a,b)=>a.name.localeCompare(b.name));
+  const btnHtml=(value,label,last)=>`<button class="scope-btn${current===value?' active-scope':''}" data-v="${esc(value)}" onclick="setReportScope(this)"${last?' style="border-right:none"':''}>${esc(label)}</button>`;
+  group.innerHTML=btnHtml('all','Global',!sups.length)+sups.map((s,i)=>btnHtml(s.username,s.name,i===sups.length-1)).join('');
+}
+function setReportScope(btn){
+  document.querySelectorAll('.scope-btn').forEach(b=>b.classList.remove('active-scope'));
+  btn.classList.add('active-scope');
+}
+function getReportScope(){ return document.querySelector('.scope-btn.active-scope')?.dataset.v||'all'; }
+function getReportScopeLabel(scope){
+  if(scope==='all') return 'Global';
+  return ((app.allSupervisors||[]).find(s=>s.username===scope)||{}).name || scope;
+}
+
+// Trae los datos de visitas de un alcance puntual (Global o un supervisor)
+// sin tocar app.raw ni la vista principal — para generar reportes de un
+// alcance distinto al que se está mirando en el dashboard.
+async function fetchVisitasRows(scope){
+  const qs = scope==='all' ? '&all=1' : '&supervisor=' + encodeURIComponent(scope);
+  const r = await fetch(app.cfg.scriptUrl+'?action=getVisitas'+qs+'&_t='+Date.now(), { mode:'cors', credentials:'omit', cache:'no-store' });
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const csv = await r.text();
+  const res = Papa.parse(csv, { header:false });
+  const rows = res.data;
+  const hIdx = rows.findIndex(row => String(row[0]||'').trim().toUpperCase()==='FECHA');
+  if(hIdx===-1) throw new Error('No se encontró la fila de encabezados');
+  const headers = rows[hIdx].map(h=>String(h||'').trim());
+  return rows.slice(hIdx+1)
+    .filter(row => String(row[0]||'').trim().length>0)
+    .map(row => {
+      const obj={};
+      headers.forEach((h,i)=>{ obj[h]=String(row[i]||'').trim(); });
+      obj._zona = extractZona(obj['Ubicación']||obj['Ubicacion']||'');
+      return obj;
+    });
+}
 
 // ── Monthly helpers ───────────────────────────────────────────
 function groupByMonth(data){
@@ -2835,8 +2995,8 @@ function productStats(rows){
 }
 
 // ── Professional charts ───────────────────────────────────────
-function renderReportCharts(fromDate,toDate){
-  const data=app.raw.filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
+function renderReportCharts(fromDate,toDate,sourceData){
+  const data=(sourceData||app.raw).filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
   const monthGroups=groupByMonth(data);
   const chartsEl=document.getElementById('report-charts');
   if(monthGroups.length<2){ chartsEl.style.display='none'; return; }
@@ -2862,8 +3022,11 @@ function renderReportCharts(fromDate,toDate){
   new Chart(document.getElementById('rc-brands'),{type:'line',data:{labels,datasets:brandLines},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:9},color:'#7B6A55'}}},scales:scaleOpts}});
 }
 
-// ── Download as Word ──────────────────────────────────────────
-function downloadAsWord(){
+// ── Download as PDF ─────────────────────────────────────────────
+// Reusa el mismo mecanismo que el reporte de presencia (#print-report +
+// window.print()): en todos los navegadores modernos "Imprimir" ofrece
+// "Guardar como PDF" como destino, sin depender de ninguna librería extra.
+function downloadReportAsPDF(){
   const title=document.getElementById('report-title').textContent||'Reporte Arrivata';
   const outputEl=document.getElementById('report-output');
   const chartsEl=document.getElementById('report-charts');
@@ -2873,43 +3036,18 @@ function downloadAsWord(){
     chartsEl.querySelectorAll('canvas').forEach(canvas=>{
       try{
         const img=canvas.toDataURL('image/png');
-        chartsHtml+=`<p style="text-align:center"><img src="${img}" style="max-width:100%;display:block;margin:8pt auto"></p>`;
+        chartsHtml+=`<p style="text-align:center"><img src="${img}"></p>`;
       }catch(e){}
     });
   }
 
-  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>${title}</title>
-<style>
-  body{font-family:Calibri,sans-serif;font-size:11pt;color:#1C1208;margin:2.5cm}
-  h1{font-size:22pt;color:#8B1714;font-family:Georgia,serif;text-align:center;margin-bottom:4pt}
-  h2{font-size:14pt;color:#8B1714;border-bottom:2px solid #E5D9C4;padding-bottom:4pt;margin-top:18pt;font-family:Georgia,serif}
-  h3{font-size:12pt;color:#7B6A55;margin-top:12pt}
-  p{line-height:1.65;margin-bottom:6pt}
-  table{border-collapse:collapse;width:100%;margin:10pt 0;font-size:9.5pt}
-  th{background:#FAF6EE;padding:6pt 8pt;text-align:left;font-weight:bold;border:1px solid #E5D9C4}
-  td{padding:5pt 8pt;border:1px solid #E5D9C4}
-  ul,ol{margin-left:18pt;margin-bottom:6pt}
-  li{margin-bottom:3pt;line-height:1.5}
-  strong{font-weight:bold}
-  .cover{text-align:center;border-bottom:3px solid #8B1714;padding-bottom:16pt;margin-bottom:24pt}
-  .generated{font-size:9pt;color:#7B6A55;margin-top:6pt}
-</style></head>
-<body>
-<div class="cover">
-  <h1>${title}</h1>
-  <p class="generated">Generado por Arrivata Dashboard · ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</p>
-</div>
-${chartsHtml}
-${outputEl.innerHTML}
-</body></html>`;
-
-  const blob=new Blob(['﻿',html],{type:'application/msword'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download=title.replace(/[^\w\sáéíóúñÁÉÍÓÚÑ]/g,'_').trim()+'.doc';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
+  document.getElementById('print-report').innerHTML=`
+    <h1>${title}</h1>
+    <p class="pr-meta">Generado por Arrivata Dashboard · ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</p>
+    ${chartsHtml}
+    ${outputEl.innerHTML}
+  `;
+  setTimeout(()=>{ window.print(); },100);
 }
 
 // ── File upload ───────────────────────────────────────────────
@@ -2999,11 +3137,12 @@ function chainOf(localName){
   return null;
 }
 
-function getChainStats(fromDate, toDate){
-  const keys=Object.keys(app.raw[0]||{});
+function getChainStats(fromDate, toDate, sourceData){
+  const raw=sourceData||app.raw;
+  const keys=Object.keys(raw[0]||{});
   const localField=keys.find(k=>/^local$/i.test(k.trim()))||'Local';
   const fechaField=keys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
-  const data=app.raw.filter(r=>{const d=parseDate(r[fechaField]);return d&&d>=fromDate&&d<=toDate;});
+  const data=raw.filter(r=>{const d=parseDate(r[fechaField]);return d&&d>=fromDate&&d<=toDate;});
   const fmtOpts={day:'numeric',month:'long',year:'numeric'};
   const periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
   const n=data.length;
@@ -3063,7 +3202,7 @@ function buildChainPart1(stats, instrucciones=''){
     periodoLabel:stats.periodoLabel,
     totalVisitas:stats.totalVisitas,
     coberturaArrivataGlobal:stats.coberturaArrivataGlobal,
-    sinCadenaAsignada:stats.sinCadenaAsignada,
+    sinCadenaAsignada:stats.localesSinCadenaAsignada,
     byChain:stats.byChain
   };
   return _instrBlock(instrucciones)+_chainIntro+
@@ -3101,7 +3240,7 @@ Usá tablas Markdown. Números reales. Tono ejecutivo.`;
 function buildChainPart2(stats, instrucciones=''){
   const data={
     periodoLabel:stats.periodoLabel,
-    byChain:stats.byChain.map(c=>({cadena:c.cadena,mejoresProductos:c.mejoresProductos,totalVisitas:c.totalVisitas})),
+    byChain:stats.byChain.map(c=>({cadena:c.cadena,productosArrivata:c.productosArrivata,totalVisitas:c.totalVisitas})),
     rankingProductosGlobal:stats.rankingProductosGlobal
   };
   return _instrBlock(instrucciones)+_chainIntro+
@@ -3371,6 +3510,17 @@ function fmtDate(d){ return d?d.toLocaleDateString('es-AR',{day:'numeric',month:
 function setLoading(on){ document.getElementById('lbar').style.display=on?'block':'none'; }
 function showError(msg){ document.getElementById('empty').style.display='block'; document.getElementById('dash').style.display='none'; document.getElementById('empty-error').style.display='block'; document.getElementById('empty-error-msg').textContent=msg; }
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// esc() sirve para texto y para atributos delimitados por comillas dobles,
+// pero NO escapa la comilla simple ni la barra invertida. Muchos handlers
+// inline se arman como onclick="fn('${...}')" — un local llamado, por ej.,
+// "Almacén O'Higgins" rompía el handler (SyntaxError) y el botón dejaba de
+// responder. escJs() escapa para un string JS entre comillas simples que
+// vive dentro de un atributo HTML delimitado por comillas dobles.
+function escJs(s){
+  return String(s)
+    .replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,'\\n')
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 // ══════════════════════════════════════════════════════════════
 // ── CARGAR VISITA ─────────────────────────────────────────────
@@ -3432,16 +3582,20 @@ let VF_EDIT=null;
 function compressImage(file){
   return new Promise(resolve=>{
     const reader=new FileReader();
+    reader.onerror=()=>resolve(null);
     reader.onload=e=>{
       const img=new Image();
+      img.onerror=()=>resolve(null);
       img.onload=()=>{
-        const MAX=1200;
-        let w=img.width,h=img.height;
-        if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
-        const canvas=document.createElement('canvas');
-        canvas.width=w; canvas.height=h;
-        canvas.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(canvas.toDataURL('image/jpeg',0.75));
+        try{
+          const MAX=1200;
+          let w=img.width,h=img.height;
+          if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+          const canvas=document.createElement('canvas');
+          canvas.width=w; canvas.height=h;
+          canvas.getContext('2d').drawImage(img,0,0,w,h);
+          resolve(canvas.toDataURL('image/jpeg',0.75));
+        }catch(_){ resolve(null); }
       };
       img.src=e.target.result;
     };
@@ -3453,13 +3607,16 @@ const MAX_FOTOS_VISITA=10;
 
 async function addVFPhotos(input){
   const files=[...input.files].slice(0,MAX_FOTOS_VISITA-VF_PHOTOS.length);
+  let hadError=false;
   for(const file of files){
     if(VF_PHOTOS.length>=MAX_FOTOS_VISITA) break;
     const dataUrl=await compressImage(file);
+    if(!dataUrl){ hadError=true; continue; }
     VF_PHOTOS.push({name:file.name,dataUrl});
   }
   input.value='';
   renderVFPhotoPreviews();
+  if(hadError) showToast('Alguna imagen no se pudo procesar y se omitió.', 'error');
 }
 
 function renderVFPhotoPreviews(){
@@ -3719,7 +3876,7 @@ function openCargarVisita(localName, editRow){
   if(existingFotos.length){
     existingWrap.style.display='block';
     existingList.innerHTML=existingFotos.map((url,i)=>
-      `<button type="button" onclick="verFotos('${esc(editRow['Local']).replace(/'/g,"\\'")}','${esc(editRow['FECHA']).replace(/'/g,"\\'")}')"
+      `<button type="button" onclick="verFotos('${escJs(editRow['Local'])}','${escJs(editRow['FECHA'])}')"
         style="width:52px;height:52px;border-radius:6px;border:1px solid var(--border);background:#f1f5f9;color:#7B6A55;font-size:.68rem;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Ver fotos">${ICON_FOTO}</button>`
     ).join('');
   } else {
@@ -3754,8 +3911,23 @@ function closeCargarVisita(){
 let _pendingVerOp=null;
 let _currentOpSupervisor=null;
 let _verifiedAt=0;
-let _verifiedPwd='';
+// Token de sesión opaco emitido por el Apps Script en el login. Se reenvía en
+// cada escritura (ver _authFields) en vez de la contraseña real, y vence al
+// mismo tiempo que VERIFY_TTL_MS (1 h) del lado del servidor.
+let _verifiedToken='';
 const VERIFY_TTL_MS=60*60*1000; // sesión verificada: 60 min de inactividad (sobrevive a recargar la página, se guarda en sessionStorage)
+
+// Corta la sesión verificada local: la usa postAction() cuando el backend
+// responde expired:true, y también sirve para "cerrar sesión".
+function _clearVerifiedSession(){
+  _verifiedToken='';
+  _verifiedAt=0;
+  _currentOpSupervisor=null;
+  try{
+    sessionStorage.removeItem('arr_verified_token');
+    sessionStorage.removeItem('arr_verified_at');
+  }catch(e){}
+}
 
 function abrirVerificacion(action, context){
   // Si ya se verificó hace menos de VERIFY_TTL_MS, no volver a pedir usuario/contraseña
@@ -3786,10 +3958,11 @@ async function verificarYProceder(){
   if(!user){ errEl.textContent='Ingresá tu usuario.'; errEl.style.display='block'; return; }
 
   // Modo sin Apps Script: compatibilidad retroactiva con contraseña '1234'
+  // (sin backend no hay escrituras reales, así que el "token" es inerte)
   if(!app.cfg.scriptUrl){
     if(pwd==='1234'){
       document.getElementById('modal-verificar').style.display='none';
-      ejecutarOpPendiente({name:user,username:user,zona:''}, pwd);
+      ejecutarOpPendiente({name:user,username:user,zona:''}, 'offline');
     } else {
       errEl.textContent='Contraseña incorrecta.'; errEl.style.display='block';
       document.getElementById('ver-pwd').value=''; document.getElementById('ver-pwd').focus();
@@ -3800,11 +3973,17 @@ async function verificarYProceder(){
   document.getElementById('ver-loading').style.display='block';
   document.getElementById('ver-btn').disabled=true;
   try{
-    const r=await fetch(`${app.cfg.scriptUrl}?action=login&u=${encodeURIComponent(user)}&p=${encodeURIComponent(pwd)}`,{redirect:'follow'});
+    // Login por POST: la contraseña va en el body, nunca en el querystring
+    // (donde quedaría en los logs de Google). El backend devuelve un token
+    // de sesión que reemplaza a la contraseña en las escrituras siguientes.
+    const r=await fetch(app.cfg.scriptUrl,{
+      method:'POST', headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'login', u:user, p:pwd})
+    });
     const d=await r.json();
     if(d.ok){
       document.getElementById('modal-verificar').style.display='none';
-      ejecutarOpPendiente(d.supervisor, pwd);
+      ejecutarOpPendiente(d.supervisor, d.token);
     } else {
       errEl.textContent=d.error||'Usuario o contraseña incorrectos.';
       errEl.style.display='block';
@@ -3818,16 +3997,16 @@ async function verificarYProceder(){
   }
 }
 
-function ejecutarOpPendiente(supervisor, pwd){
+function ejecutarOpPendiente(supervisor, token){
   if(!_pendingVerOp) return;
   const {action,context}=_pendingVerOp;
   _pendingVerOp=null;
   _currentOpSupervisor=supervisor;
   _verifiedAt=Date.now();
   sessionStorage.setItem('arr_verified_at', String(_verifiedAt));
-  if(pwd!==undefined){
-    _verifiedPwd=pwd;
-    sessionStorage.setItem('arr_verified_pwd', pwd);
+  if(token!==undefined){
+    _verifiedToken=token;
+    sessionStorage.setItem('arr_verified_token', token);
   }
   // Actualizar perfil del supervisor activo
   app.supervisor=supervisor;
@@ -3835,7 +4014,13 @@ function ejecutarOpPendiente(supervisor, pwd){
   refreshNavSupervisor();
   // "Iniciar sesión" explícito → saltar a la zona propia
   if(action==='login') selectZone(supervisor.username);
-  else refreshEditGating();
+  else {
+    refreshEditGating();
+    // La identidad recién verificada puede habilitar los botones "Editar" de
+    // las tablas (dependen de canEditCurrentZone) — re-renderizar para que
+    // aparezcan sin esperar al próximo refresh de datos.
+    if(app.raw && app.raw.length){ renderTable(); if(app.detLocal) applyDetailPeriod(app.detPeriodDays); }
+  }
   if(action==='config'||action==='identificar'){
     abrirConfigModal(supervisor);
     return;
@@ -3845,12 +4030,14 @@ function ejecutarOpPendiente(supervisor, pwd){
   else if(action==='generarReporte') generateReport(context);
 }
 
-// Credenciales del operador autenticado, para adjuntar a escrituras del backend.
+// Identidad del operador autenticado, para adjuntar a escrituras del backend.
+// Viaja el token de sesión (no la contraseña). `username` se manda solo como
+// dato informativo / para el fallback de compatibilidad del backend.
 function _authFields(targetUsername){
   const opSup=_currentOpSupervisor||app.supervisor||{};
   return {
     username: opSup.username||'',
-    password: _verifiedPwd||'',
+    token: _verifiedToken||'',
     targetUsername: targetUsername||opSup.username||''
   };
 }
@@ -4153,8 +4340,8 @@ function renderAgenda(){
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
         <span style="font-size:.74rem;font-weight:700;color:${sc};background:${sb};padding:3px 10px;border-radius:20px">${r.status}</span>
-        <button onclick="openDetail('${esc(r.local)}','agenda')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text);font-weight:700;cursor:pointer">Ver</button>
-        ${canEditCurrentZone()?`<button onclick="abrirVerificacion('cargarVisita','${esc(r.local)}')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer">Visitar</button>`:''}
+        <button onclick="openDetail('${escJs(r.local)}','agenda')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text);font-weight:700;cursor:pointer">Ver</button>
+        ${canEditCurrentZone()?`<button onclick="abrirVerificacion('cargarVisita','${escJs(r.local)}')" style="font-size:.78rem;padding:5px 12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer">Visitar</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -4180,7 +4367,8 @@ function exportarExcel(){
   const now=new Date().toLocaleDateString('es-AR');
 
   // ── Hoja 1: Resumen ──────────────────────────────────────────
-  const filtered=app._periodData;
+  const filtered=app._periodData||[];
+  if(!filtered.length){ showToast('Todavía no hay datos cargados para exportar.', 'error'); return; }
   const locals=[...new Set(filtered.map(r=>r['Local']).filter(Boolean))];
   const arrCols=app.brandCols.ARRIVATA||[];
   const presentes=filtered.filter(r=>arrCols.some(c=>colPresent(r,c)));
