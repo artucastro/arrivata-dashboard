@@ -2579,7 +2579,40 @@ async function generateReport(type){
     }
     let reportText;
 
-    if(type==='personalizado' && rtype==='profesional'){
+    // ── Informe guiado por instrucciones ──────────────────────
+    // Cuando el usuario escribe instrucciones, ellas definen la estructura
+    // (secciones, orden, foco) — NO la plantilla fija de Complejo/Profesional.
+    // Se le pasan datos ricos por zona + evolución diaria y se le pide que
+    // describa cada gráfico como texto; los gráficos reales los dibuja
+    // renderRastrillajeCharts().
+    const usarGuiado = type==='personalizado' && !!instrucciones && (rtype==='profesional'||rtype==='complejo');
+    if(usarGuiado){
+      const rich = getRichStats(fromDate, toDate, data);
+      app._lastRich = rich;
+      if(rtype==='profesional'){
+        let g1='';
+        try { g1 = extractReportText(await callAnthropic(buildInstructionReport(rich,instrucciones,'1'), 12000, fileBlocks)); } catch(e){ g1=''; }
+        if(g1){
+          const se=document.getElementById('rpt-status'); if(se) se.textContent='Generando gráficos y conclusiones (2/2)...';
+          let g2='';
+          try { g2 = extractReportText(await callAnthropic(buildInstructionReport(rich,instrucciones,'2'), 8000, fileBlocks)); } catch(e){ g2=''; }
+          reportText = g2 ? (g1 + '\n\n' + g2) : g1;
+        } else {
+          const rf = await callAnthropic(buildInstructionReport(rich,instrucciones,''), 12000, []);
+          reportText = extractReportText(rf);
+          if(!reportText) throw new Error('No se pudo generar el informe'+_reportWhy(rf)+(fileBlocks.length?' — probá quitando los archivos de referencia':''));
+        }
+      } else {
+        let r = await callAnthropic(buildInstructionReport(rich,instrucciones,''), 12000, fileBlocks);
+        reportText = extractReportText(r);
+        if(!reportText && fileBlocks.length){
+          const se=document.getElementById('rpt-status'); if(se) se.textContent='Reintentando sin los archivos adjuntos...';
+          r = await callAnthropic(buildInstructionReport(rich,instrucciones,''), 12000, []);
+          reportText = extractReportText(r);
+        }
+        if(!reportText) throw new Error('La IA no devolvió texto'+_reportWhy(r)+(fileBlocks.length?' — probá quitando los archivos de referencia':''));
+      }
+    } else if(type==='personalizado' && rtype==='profesional'){
       // Informe en dos etapas para que salga completo. Si una etapa falla, se
       // degrada con elegancia (usa la etapa 1 sola, o cae a un informe de una
       // sola llamada) en vez de dejar al usuario sin nada.
@@ -2658,7 +2691,8 @@ async function generateReport(type){
     if(scope!=='all') title+=' · '+scopeLabel;
     document.getElementById('report-title').textContent=title;
     document.getElementById('report-output').innerHTML=marked.parse(app.reportText);
-    if(type==='personalizado'&&rtype==='profesional') renderReportCharts(fromDate,toDate,data);
+    if(usarGuiado && app._lastRich) renderRastrillajeCharts(app._lastRich);
+    else if(type==='personalizado'&&rtype==='profesional') renderReportCharts(fromDate,toDate,data);
     document.getElementById('report-wrap').style.display='block';
   } catch(e){
     if(e instanceof TypeError){
@@ -3020,6 +3054,137 @@ function renderReportCharts(fromDate,toDate,sourceData){
   const scaleOpts={y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#7B6A55'},grid:{color:'#F3ECD9'}},x:{ticks:{font:{size:9},color:'#7B6A55',maxRotation:30},grid:{display:false}}};
   new Chart(document.getElementById('rc-trend'),{type:'line',data:{labels,datasets:[{label:'Arrivata %',data:arrPcts,borderColor:BRAND_COLORS.ARRIVATA,backgroundColor:BRAND_COLORS.ARRIVATA+'25',fill:true,tension:.35,pointRadius:5,pointBackgroundColor:BRAND_COLORS.ARRIVATA}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw}%`}}},scales:scaleOpts}});
   new Chart(document.getElementById('rc-brands'),{type:'line',data:{labels,datasets:brandLines},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:9},color:'#7B6A55'}}},scales:scaleOpts}});
+}
+
+// ── Datos ricos para informes guiados por instrucciones ───────────
+// Desglose por zona estilo "rastrillaje" + evolución día a día. Lo usan
+// buildInstructionReport() y renderRastrillajeCharts().
+function getRichStats(fromDate, toDate, sourceData){
+  const data=(sourceData||app.raw).filter(r=>{const d=parseDate(r['FECHA']);return d&&d>=fromDate&&d<=toDate;});
+  const arrCols=app.brandCols.ARRIVATA||[];
+  const fmtOpts={day:'numeric',month:'long',year:'numeric'};
+  const periodoLabel=fromDate.toLocaleDateString('es-AR',fmtOpts)+' al '+toDate.toLocaleDateString('es-AR',fmtOpts);
+  const n=data.length;
+
+  const marcas=Object.keys(app.brandCols).map(b=>{
+    const on=data.filter(r=>hasPresence(r,b)).length;
+    return {marca:b,visitasConPresencia:on,totalVisitas:n,cobertura:n?Math.round(on/n*100)+'%':'0%'};
+  }).sort((a,b)=>parseInt(b.cobertura)-parseInt(a.cobertura));
+
+  const zmap={};
+  data.forEach(r=>{
+    const z=r._zona||'—'; if(z==='—') return;
+    const b=zmap[z]||(zmap[z]={visitas:0,locales:new Set(),quesos:0,conFaltante:0,completo:0,falt:{},porLocal:{}});
+    b.visitas++; if(r['Local']) b.locales.add(r['Local']);
+    const presentes=arrCols.filter(c=>colPresent(r,c));
+    const q=arrCols.reduce((s,c)=>s+parseQty(r[c]),0);
+    b.quesos+=q;
+    if(arrCols.length && presentes.length===arrCols.length) b.completo++; else b.conFaltante++;
+    arrCols.forEach(c=>{ if(!colPresent(r,c)) b.falt[colLabel(c)]=(b.falt[colLabel(c)]||0)+1; });
+    if(r['Local']) b.porLocal[r['Local']]=(b.porLocal[r['Local']]||0)+q;
+  });
+  const porZona=Object.entries(zmap).map(([z,b])=>{
+    const locRank=Object.entries(b.porLocal).sort((x,y)=>y[1]-x[1]);
+    return {
+      zona:z, visitas:b.visitas, localesRelevados:b.locales.size,
+      quesosRelevados:b.quesos,
+      promedioQuesosPorLocal: b.visitas?Math.round(b.quesos/b.visitas*10)/10:0,
+      localesConFaltante:b.conFaltante, pctConFaltante:b.visitas?Math.round(b.conFaltante/b.visitas*100):0,
+      localesStockCompleto:b.completo, pctStockCompleto:b.visitas?Math.round(b.completo/b.visitas*100):0,
+      productosMasFaltantes:Object.entries(b.falt).sort((x,y)=>y[1]-x[1]).slice(0,6).map(([p,c])=>({producto:p,localesSinEl:c})),
+      mejoresLocales:locRank.slice(0,3).map(([l,q])=>({local:l,quesos:q})),
+      peoresLocales:locRank.slice(-3).reverse().map(([l,q])=>({local:l,quesos:q})),
+    };
+  }).sort((a,b)=>b.visitas-a.visitas);
+
+  const dmap={};
+  data.forEach(r=>{ const f=r['FECHA']; if(!f) return;
+    const b=dmap[f]||(dmap[f]={visitas:0,quesos:0}); b.visitas++; b.quesos+=arrCols.reduce((s,c)=>s+parseQty(r[c]),0); });
+  const evolucionDiaria=Object.entries(dmap).sort((a,b)=>(parseDate(a[0])||0)-(parseDate(b[0])||0))
+    .map(([f,b])=>({fecha:f,visitas:b.visitas,quesosRelevados:b.quesos}));
+
+  const monthGroups=groupByMonth(data);
+  return {
+    periodoLabel,
+    kpis:{
+      totalVisitas:n,
+      visitasConArrivata:data.filter(r=>hasPresence(r,'ARRIVATA')).length,
+      coberturaArrivata:(marcas.find(m=>m.marca==='ARRIVATA')?.cobertura||'0%'),
+      localesRelevados:new Set(data.map(r=>r['Local']).filter(Boolean)).size,
+      zonasRelevadas:porZona.length,
+      quesosRelevadosTotal:data.reduce((s,r)=>s+arrCols.reduce((x,c)=>x+parseQty(r[c]),0),0),
+    },
+    marcas,
+    porZona,
+    evolucionDiaria,
+    rankingProductos:productStats(data),
+    byMonth: monthGroups.length>1 ? monthGroups.map(([k,rows])=>{const ms=monthStats(rows);return{mes:buildMonthLabel(k),totalVisitas:ms.totalVisitas,coberturaArrivata:ms.coberturaArrivata,productosArrivata:productStats(rows)};}) : []
+  };
+}
+
+// Prompt para informes donde las INSTRUCCIONES DEL USUARIO mandan sobre la
+// estructura (nada de plantilla fija). `parte`: '' entero, '1' análisis+tablas,
+// '2' gráficos+conclusiones.
+function buildInstructionReport(rich, instrucciones, parte){
+  const datos={
+    periodoLabel:rich.periodoLabel, kpis:rich.kpis, marcas:rich.marcas,
+    porZona:rich.porZona, evolucionDiaria:rich.evolucionDiaria,
+    rankingProductos:rich.rankingProductos, byMonth:rich.byMonth
+  };
+  let tarea;
+  if(parte==='1'){
+    tarea='Escribí la PRIMERA PARTE del informe: TODAS las secciones de datos, tablas y análisis que pidió el usuario (incluida la de problemas detectados si la pidió). NO escribas todavía la sección de gráficos ni las conclusiones finales — van en la segunda parte. No agregues notas del tipo "continúa en la segunda parte".';
+  } else if(parte==='2'){
+    tarea='La primera parte ya cubrió el análisis, las tablas y los problemas detectados. Escribí ÚNICAMENTE (encabezados con "##"):\n'+
+      '1) La sección de GRÁFICOS que pidió el usuario. Para cada uno: "**GRÁFICO N: <título>**" y debajo qué muestra y con qué datos CONCRETOS de este informe (nombrá las zonas / productos / valores reales). No dibujes nada, describilos.\n'+
+      '2) Las CONCLUSIONES finales que pidió el usuario.\n'+
+      'No repitas secciones de la primera parte.';
+  } else {
+    tarea='Escribí el informe COMPLETO siguiendo exactamente lo que pidió el usuario: sus secciones, su orden y su foco. Para los gráficos: NO los dibujes; describí cada uno como "GRÁFICO N: <título> — qué muestra y con qué datos CONCRETOS de este informe". Cerrá con las conclusiones que pidió.';
+  }
+  return _instrBlock(instrucciones)+_profIntro+
+    `Generá un informe para ARRIVATA del período ${rich.periodoLabel}.\n\n`+
+    `Las INSTRUCCIONES DEL USUARIO de arriba definen la estructura COMPLETA del informe: qué secciones, en qué orden y con qué foco. Seguilas al pie de la letra. NO uses una plantilla propia ni agregues secciones que no pidió.\n\n`+
+    `DATOS (JSON exacto — no cambies ningún número; si un dato no está acá, no lo menciones):\n${JSON.stringify(datos,null,2)}\n\n`+
+    tarea+`\n\nTablas Markdown. Español. Tono ejecutivo. SOLO números del JSON.`;
+}
+
+// Gráficos reales (Chart.js) para el informe guiado por instrucciones.
+function renderRastrillajeCharts(rich){
+  const el=document.getElementById('report-charts');
+  if(!el) return;
+  el.querySelectorAll('canvas').forEach(c=>{ const ch=(window.Chart&&Chart.getChart)?Chart.getChart(c):null; if(ch) ch.destroy(); });
+  const zonas=rich.porZona.slice(0,12);
+  if(!zonas.length){ el.style.display='none'; return; }
+  const prods=[...rich.rankingProductos].sort((a,b)=>parseInt(a.presencia)-parseInt(b.presencia)).slice(0,12);
+  const dias=rich.evolucionDiaria;
+
+  const panel=(id,t,tall)=>`<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px${tall?';grid-column:1/-1':''}"><div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${t}</div><div style="height:${tall?'200px':'230px'}"><canvas id="${id}"></canvas></div></div>`;
+  el.innerHTML=`<div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--text);margin-bottom:12px;font-size:.88rem;border-bottom:2px solid var(--border);padding-bottom:8px">Gráficos del rastrillaje</div>`+
+    `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">`+
+    panel('rc-loc','Locales relevados por zona')+
+    panel('rc-prom','Promedio de quesos por local — por zona')+
+    panel('rc-falt','% locales con faltante vs. stock completo')+
+    panel('rc-prod','Productos ordenados por presencia (menor = más faltante)')+
+    panel('rc-evo','Evolución de quesos relevados en el período',true)+
+    `</div>`;
+  el.style.display='block';
+
+  const G={grid:{color:'#F3ECD9'}}, t9={font:{size:9},color:'#7B6A55'}, t10={font:{size:10},color:'#7B6A55'};
+  const mk=(id,cfg)=>{ const c=document.getElementById(id); if(c) new Chart(c,cfg); };
+  const zl=zonas.map(z=>z.zona.length>18?z.zona.slice(0,18)+'…':z.zona);
+  const hbar=(id,vals,color)=>mk(id,{type:'bar',data:{labels:zl,datasets:[{data:vals,backgroundColor:color,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{...G,ticks:t10,beginAtZero:true},y:{grid:{display:false},ticks:t9}}}});
+  hbar('rc-loc',zonas.map(z=>z.localesRelevados),'#8B1714');
+  hbar('rc-prom',zonas.map(z=>z.promedioQuesosPorLocal),'#A07830');
+  mk('rc-falt',{type:'bar',data:{labels:zl,datasets:[
+      {label:'Con faltante %',data:zonas.map(z=>z.pctConFaltante),backgroundColor:'#dc2626'},
+      {label:'Stock completo %',data:zonas.map(z=>z.pctStockCompleto),backgroundColor:'#16a34a'}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:9},boxWidth:9,color:'#7B6A55'}}},scales:{x:{stacked:true,max:100,...G,ticks:{callback:v=>v+'%',...t10}},y:{stacked:true,grid:{display:false},ticks:t9}}}});
+  mk('rc-prod',{type:'bar',data:{labels:prods.map(p=>p.producto),datasets:[{data:prods.map(p=>parseInt(p.presencia)),backgroundColor:prods.map(p=>{const v=parseInt(p.presencia);return v>=70?'#16a34a':v>=45?'#d97706':'#dc2626';}),borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' presencia '+c.raw+'%'}}},scales:{x:{max:100,...G,ticks:{callback:v=>v+'%',...t10}},y:{grid:{display:false},ticks:t9}}}});
+  mk('rc-evo',{type:'line',data:{labels:dias.map(d=>d.fecha.slice(0,5)),datasets:[{label:'Quesos',data:dias.map(d=>d.quesosRelevados),borderColor:'#8B1714',backgroundColor:'#8B171425',fill:true,tension:.3,pointRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:t9},y:{...G,ticks:t10,beginAtZero:true}}}});
 }
 
 // ── Download as PDF ─────────────────────────────────────────────
