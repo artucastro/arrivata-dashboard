@@ -742,22 +742,24 @@ function doPost(e) {
       const local = data.local || '';
       const fecha = data.fecha || '';
       const b64List = data.fotos || [];
-      const urls = b64List.map(function (b64, i) {
-        const clean = b64.replace(/^data:image\/\w+;base64,/, '');
-        const bytes = Utilities.base64Decode(clean);
-        const blob = Utilities.newBlob(bytes, 'image/jpeg',
-          'gondola_' + local + '_' + fecha.replace(/\//g, '-') + '_' + i + '.jpg');
-        const file = DriveApp.createFile(blob);
-        // No hace falta compartir el archivo: se sirve autenticado a través
-        // de la acción "fotoImg" de este mismo script (ver doGet), que evita
-        // el hotlinking poco confiable de "drive.google.com/...".
-        return ScriptApp.getService().getUrl() + '?action=getFotoData&id=' + file.getId();
-      });
-      // Leer-modificar-escribir: sin lock, dos subidas simultáneas a la misma
-      // visita (o una subida mientras updateVisita migra las fotos) se pisan y
-      // se pierden URLs. Los archivos ya están en Drive a esta altura: el lock
-      // protege el índice, no la subida.
+      // Todo bajo lock, incluida la subida: el índice de fotos es
+      // leer-modificar-escribir, así que sin lock dos subidas simultáneas a la
+      // misma visita (o una subida mientras updateVisita migra las fotos) se
+      // pisan y se pierden URLs. Subir PRIMERO y después pedir el lock haría
+      // que, si el lock no se consigue, quedaran archivos sueltos en Drive que
+      // nadie referencia (y que el reintento volvería a crear).
       return _conLock(function () {
+        const urls = b64List.map(function (b64, i) {
+          const clean = b64.replace(/^data:image\/\w+;base64,/, '');
+          const bytes = Utilities.base64Decode(clean);
+          const blob = Utilities.newBlob(bytes, 'image/jpeg',
+            'gondola_' + local + '_' + fecha.replace(/\//g, '-') + '_' + i + '.jpg');
+          const file = DriveApp.createFile(blob);
+          // No hace falta compartir el archivo: se sirve autenticado a través
+          // de la acción "getFotoData" de este mismo script (ver doGet), que
+          // evita el hotlinking poco confiable de "drive.google.com/...".
+          return ScriptApp.getService().getUrl() + '?action=getFotoData&id=' + file.getId();
+        });
         const key = _fotoKey(local, fecha);
         const existing = _leerFotos(key);
         _props().setProperty(key, JSON.stringify(existing.concat(urls)));
