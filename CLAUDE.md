@@ -7,7 +7,7 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
 
 - **`index.html`** — la app entera: HTML + CSS + JS vanilla, sin framework ni
   build. Librerías por CDN (Tailwind play-CDN, Chart.js 4, PapaParse, marked,
-  SheetJS). Se hostea en GitHub Pages.
+  DOMPurify, SheetJS). Se hostea en GitHub Pages.
 - **`apps-script.js`** — Google Apps Script (un solo proyecto, un solo
   deployment `/exec`). Es la API: lee/escribe el Google Sheet de cada
   supervisor por `spreadsheetId`, guarda notas / fotos / datos de local en
@@ -31,6 +31,37 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
 - Las **lecturas** (`getVisitas`, `getNotas`, `getFotos`, `getLocalData`,
   `getSupervisors`) son públicas a propósito: gerencia necesita ver el
   panorama global sin perfil de supervisor.
+
+## Convenciones del front (`index.html`)
+
+- **Sesión**: el reloj del cliente (`_verifiedAt`, `VERIFY_TTL_MS`) cuenta
+  55 min FIJOS desde el login — no se renueva por actividad, igual que el
+  token de 1 h del servidor. `_sesionVigente()` es el único chequeo;
+  `abrirVerificacion()` pide login antes de abrir cualquier formulario de
+  escritura (visita nueva, edición, datos del local, config, reportes).
+- **Escrituras**: toda acción que manda `token` pasa por `postAction()`. Si el
+  backend responde `expired:true` (o el reloj local ya venció), abre el login
+  por encima del formulario (`pedirRelogin()`, modal con z-index 120) y
+  reintenta la misma escritura UNA sola vez con el token nuevo; si el usuario
+  cancela, el formulario queda abierto con sus datos. Es seguro porque el
+  backend valida el token antes de escribir. No llamar a `fetch` directo para
+  escribir. Única excepción: `crearSpreadsheetSupervisor` (va por GET), que
+  chequea el reloj antes de mandar.
+- **Borrador de visita nueva**: `localStorage`, clave
+  `arr_visita_draft|<username>`, autoguardado con debounce de 500 ms. Guarda
+  texto, SI/NO, cantidades y el `clientId` del intento (para que el backend
+  dedupe si aquel guardado había llegado); NUNCA fotos. No aplica a la
+  edición. Se borra solo tras guardado confirmado o descarte explícito.
+- **Fechas**: el día calendario de hoy sale SIEMPRE de `hoyAR()` (zona
+  America/Argentina/Buenos_Aires; acepta offset en días). No usar
+  `new Date().toISOString().slice(0,10)`: da el día en UTC y después de las
+  21:00 de Argentina ya es mañana.
+- **HTML dinámico**: todo dato externo (sheet, Script Properties, input de
+  usuario, respuesta de la IA) se escapa antes de ir a `innerHTML`: `esc()`
+  para texto y atributos (escapa `& < > " '`), `escJs()` para strings dentro
+  de handlers inline (`onclick="fn('...')"`). El markdown de los reportes pasa
+  por `renderMarkdownSafe()` (marked + DOMPurify, sin imágenes/medios); si
+  DOMPurify no cargó se muestra texto plano escapado.
 
 ## Reglas de trabajo
 
@@ -57,8 +88,17 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
   Apps Script).
 - Las lecturas de datos del Apps Script no piden token: cualquiera con la URL
   del `/exec` puede bajar todas las visitas de todos los supervisores.
-- `index.html` es un monolito de ~4.400 líneas sin tests ni build; Tailwind
-  play-CDN en producción; varias dependencias de CDN.
+- `index.html` es un monolito de ~4.900 líneas sin tests ni build; Tailwind
+  play-CDN en producción; varias dependencias de CDN (solo DOMPurify lleva
+  versión fija + SRI).
+- Las acciones de admin (`createSupervisor`, `deleteSupervisor`,
+  `createSupervisorSheet`) responden "No autorizado" sin `expired:true` cuando
+  el token venció, así que para ellas el re-login automático depende solo del
+  reloj local de 55 min. Fix pendiente en `_requireAdmin` (backend).
+- Las lecturas paralelas al arrancar (`getNotas`, `getFotos`, `getLocalData`)
+  fallan en silencio de forma intermitente contra el Apps Script real (se
+  tragan con `.catch(()=>{})`): los indicadores de nota/foto pueden faltar
+  hasta el próximo auto-refresh de 5 min.
 - Notas, fotos y datos de local se guardan con clave global (`nota|<local>|...`,
   `localdata|<local>`), no por supervisor: una zona puede pisar datos de otra.
 - `CacheService` (donde viven los tokens de sesión) no es persistente entre
