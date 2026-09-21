@@ -1717,10 +1717,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if(st) st.value=cc.tipo;
   });
   // Default custom range: last 30 days → today
-  const toISO=d=>d.toISOString().slice(0,10);
-  const _today=new Date();
-  document.getElementById('inp-hasta').value=toISO(_today);
-  document.getElementById('inp-desde').value=toISO(new Date(_today.getFullYear(),_today.getMonth(),_today.getDate()-30));
+  document.getElementById('inp-hasta').value=hoyAR();
+  document.getElementById('inp-desde').value=hoyAR(-30);
   renderSidebar();
   loadData();
   loadLocalesBase();
@@ -3735,6 +3733,17 @@ function renderLocalesGrid(){
 }
 
 // ── Utils ────────────────────────────────────────────────────
+// Día calendario de HOY en Argentina, como YYYY-MM-DD (el formato de los
+// <input type="date">). NO usar new Date().toISOString().slice(0,10): eso da
+// el día en UTC, y después de las 21:00 de Argentina ya es "mañana".
+// `offsetDias` desplaza el resultado (ej. hoyAR(-30) = hace 30 días).
+function hoyAR(offsetDias=0){
+  const hoy=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  if(!offsetDias) return hoy;
+  const [y,m,d]=hoy.split('-').map(Number);
+  const dt=new Date(y,m-1,d+offsetDias); // aritmética de calendario pura, sin pasar por UTC
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+}
 function parseDate(str){ if(!str) return null; const p=String(str).split('/'); if(p.length===3) return new Date(+p[2],+p[1]-1,+p[0]); return null; }
 function fmtDate(d){ return d?d.toLocaleDateString('es-AR',{day:'numeric',month:'short'}):''; }
 function setLoading(on){ document.getElementById('lbar').style.display=on?'block':'none'; }
@@ -4165,12 +4174,12 @@ function openCargarVisita(localName, editRow){
       const base=(app._localesBase||[]).find(l=>l.local===localName);
       ubicInp.value=base?(base.ubicacion||''):'';
     }
-    document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
+    document.getElementById('vf-fecha').value=hoyAR();
     document.getElementById('vf-nota').value='';
   } else {
     nameInp.value='';
     ubicInp.value='';
-    document.getElementById('vf-fecha').value=new Date().toISOString().slice(0,10);
+    document.getElementById('vf-fecha').value=hoyAR();
     document.getElementById('vf-nota').value='';
     setTimeout(()=>nameInp.focus(),100);
   }
