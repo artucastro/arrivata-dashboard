@@ -76,6 +76,31 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
   America/Argentina/Buenos_Aires; acepta offset en días). No usar
   `new Date().toISOString().slice(0,10)`: da el día en UTC y después de las
   21:00 de Argentina ya es mañana.
+- **Catálogo de productos**: NO hay lista fija. `detectBrands()` lo deduce de
+  los encabezados del sheet por sufijo (` AR`, ` FES`, ` WA`, ` CUI`,
+  ` CARRE`); lo único hardcodeado son las 5 marcas. Para dar de alta un
+  producto alcanza con agregar la columna al sheet — el formulario, los
+  gráficos, los faltantes, el Excel, el PDF y los informes lo toman solos.
+- **Alta de un producto nuevo** (`PRODUCTO_ALTA`): una columna nueva llega con
+  TODO el histórico vacío, así que sin marcar desde cuándo existe cuenta como
+  faltante en cada visita anterior y ningún local puede volver a estar
+  "Completo" (medido al agregar la Burratina sobre las 828 visitas reales:
+  13 locales "Completo" → 0, la única alerta de quiebre se apagaba y la
+  variedad promedio caía de 77% a 71%). El mapa `PRODUCTO_ALTA`
+  (encabezado exacto → fecha `dd/MM/yyyy`) más `productoAplica()` /
+  `arrColsDeVisita()` resuelven eso, y se aplican en los seis lugares donde el
+  total de productos es denominador o se listan faltantes: `getStatusForRow`
+  (alertas y agenda), `calcFaltantesPorProducto`, `calcLocalScore`,
+  `getPortfolioStatus`, el gráfico "Variedad por Local" y `getRichStats`. Los
+  que filtran por "tiene datos" (`productStats`, el gráfico de producto, la
+  tabla del detalle) no lo necesitan. Si la celda ya tiene un dato, el producto
+  cuenta igual aunque la visita sea anterior al alta.
+  **Procedimiento para el próximo producto**: 1) agregar la línea a
+  `PRODUCTO_ALTA`, 2) pushear el front, 3) recién después agregar la columna a
+  cada sheet de supervisor Y a la plantilla. Ese orden importa: con la columna
+  puesta antes del push, gerencia ve las métricas rotas hasta que recargue.
+  El encabezado del sheet y la clave del mapa tienen que coincidir carácter por
+  carácter; si no, salta un `console.warn` al cargar los datos.
 - **HTML dinámico**: todo dato externo (sheet, Script Properties, input de
   usuario, respuesta de la IA) se escapa antes de ir a `innerHTML`: `esc()`
   para texto y atributos (escapa `& < > " '`), `escJs()` para strings dentro
@@ -96,6 +121,10 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
   desalojar antes, y si el lock vence el dedupe se saltea. O sea que un
   borrador recuperado al día siguiente y reenviado **sí** puede duplicar la
   fila. El arreglo de fondo es un id único por visita en una columna del Sheet.
+- **Plantilla de columnas**: `createSupervisorSheet` clona la PRIMERA PESTAÑA
+  del spreadsheet al que está bindeado el proyecto (el de artucastro), no una
+  lista en el código. Una columna de producto nueva hay que agregarla también
+  ahí, o los supervisores que se creen después arrancan sin ella.
 - **`updateVisita` no reconstruye la fila**: `_mergeVisitaRow` parte de los
   valores actuales y solo pisa las celdas que el payload trae y el encabezado
   reconoce, así una columna agregada a mano al Sheet no se blanquea al editar.
