@@ -93,14 +93,15 @@ function _issueToken(username, sup) {
   return token;
 }
 
-// Resuelve la identidad del actor de una operación de escritura:
-//  a) por `token` de sesión (mecanismo actual);
-//  b) si no hay token, por `username` + `password` (compatibilidad con
-//     sesiones abiertas durante la migración — clientes viejos que todavía
-//     reenvían la contraseña);
-//  c) si ninguno es válido, rechaza.
-// Devuelve { sup, username } o { error, expired? }.
-function _resolveTokenOrPassword(data) {
+// Resuelve la identidad del actor de una operación de escritura: SOLO por
+// `token` de sesión. Antes, si no venía token, se aceptaba `username` +
+// `password` (compatibilidad con clientes viejos de la migración a tokens).
+// Esa rama se eliminó: permitía probar contraseñas contra cualquier escritura
+// (ej. saveNota) y saltear así el límite de intentos del login.
+// Sin token, o con uno vencido/inválido, responde expired:true — el frontend
+// usa ese flag para pedir login de nuevo y reintentar la escritura sola.
+// Devuelve { sup, username } o { error, expired }.
+function _resolveToken(data) {
   if (data.token) {
     const raw = CacheService.getScriptCache().get('token|' + data.token);
     if (raw) {
@@ -110,23 +111,33 @@ function _resolveTokenOrPassword(data) {
         if (sup) return { sup: sup, username: t.username };
       } catch (_) {}
     }
-    return { error: 'Sesión vencida — volvé a iniciar sesión', expired: true };
   }
-  const sup = _authSupervisor(data.username, data.password);
-  if (!sup) return { error: 'Usuario o contraseña incorrectos' };
-  return { sup: sup, username: data.username };
+  return { error: 'Sesión vencida — volvé a iniciar sesión', expired: true };
 }
 
 function _requireAdmin(data) {
-  const auth = _resolveTokenOrPassword(data);
+  const auth = _resolveToken(data);
   if (auth.error || !auth.sup || !auth.sup.isAdmin) return null;
   return auth.sup;
+}
+
+// Admin para las acciones por GET. Las cuatro herramientas manuales
+// (restyleSheet, clearVisitRows, removeFilter, getDebugLog) no las llama
+// ningún front: se invocan pegando la URL en el navegador, así que siguen
+// aceptando usuario+contraseña en el querystring — deuda conocida, ver
+// CLAUDE.md. El límite de intentos de _authSupervisor igual las cubre.
+// También acepta `token`, para las acciones por GET que sí llama el front.
+function _requireAdminGet(e) {
+  const auth = e.parameter.token
+    ? _resolveToken({ token: e.parameter.token })
+    : _authSupervisor(e.parameter.u || '', e.parameter.p || '');
+  return (auth.sup && auth.sup.isAdmin) ? auth.sup : null;
 }
 
 // Resuelve a qué supervisor (dueño de spreadsheet) apunta una operación
 // de escritura, validando que quien la pide esté autorizado a hacerlo.
 function _resolveTarget(data) {
-  const auth = _resolveTokenOrPassword(data);
+  const auth = _resolveToken(data);
   if (auth.error) return { error: auth.error, expired: auth.expired };
   const actor = auth.sup;
   const actorUsername = auth.username;
@@ -319,7 +330,7 @@ function doGet(e) {
   // manuales. Las otras acciones admin por GET (restyleSheet, clearVisitRows,
   // removeFilter, getDebugLog) no se llaman desde el frontend y siguen igual.
   if (action === 'createSupervisorSheet') {
-    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p, token: e.parameter.token })) {
+    if (!_requireAdminGet(e)) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
     const template = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
@@ -344,7 +355,7 @@ function doGet(e) {
   // ── Aplicar el estilo visual del template a un spreadsheet ya existente ──
   // (solo admin) — para "poner al día" spreadsheets creados antes de este cambio.
   if (action === 'restyleSheet') {
-    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+    if (!_requireAdminGet(e)) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
     const sup = _getSupervisorRaw(e.parameter.supervisor || '');
@@ -361,7 +372,7 @@ function doGet(e) {
   // (solo admin) — recorre TODAS las pestañas y devuelve el detalle de lo
   // que borró en cada una, para poder verificar sin adivinar.
   if (action === 'clearVisitRows') {
-    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+    if (!_requireAdminGet(e)) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
     const spreadsheetId = e.parameter.spreadsheetId || '';
@@ -532,7 +543,7 @@ function doGet(e) {
   // Un Filter activo rompe appendRow y puede ocultar filas si le queda
   // algún criterio aplicado. Recorre todas las pestañas y lo saca.
   if (action === 'removeFilter') {
-    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+    if (!_requireAdminGet(e)) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
     const spreadsheetId = e.parameter.spreadsheetId || '';
@@ -548,7 +559,7 @@ function doGet(e) {
 
   // ── DEBUG temporal: último error de doPost ────────────────────
   if (action === 'getDebugLog') {
-    if (!_requireAdmin({ username: e.parameter.u, password: e.parameter.p })) {
+    if (!_requireAdminGet(e)) {
       return _ok({ ok: false, error: 'No autorizado' });
     }
     const raw = _props().getProperty('debug|lastError');
@@ -753,7 +764,7 @@ function doPost(e) {
     // navegador. Ahora el navegador solo manda el prompt; este proxy hace la
     // llamada real y devuelve la respuesta de Anthropic tal cual.
     if (data.action === 'callClaude') {
-      const auth = _resolveTokenOrPassword(data);
+      const auth = _resolveToken(data);
       if (auth.error) return _ok({ ok: false, error: auth.error, expired: auth.expired });
       const apiKey = _props().getProperty('ANTHROPIC_API_KEY');
       if (!apiKey) return _ok({ ok: false, error: 'Falta configurar la API key de Anthropic en el proyecto de Apps Script (Configuración del proyecto → Propiedades del script → ANTHROPIC_API_KEY).' });
