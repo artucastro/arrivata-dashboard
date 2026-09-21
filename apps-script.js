@@ -272,21 +272,13 @@ function _collectRowsFromSpreadsheet(ss, sheetName, canonHeaders, dataRows) {
 function doGet(e) {
   const action = e.parameter.action || '';
 
-  // ── Login de supervisor (GET — compatibilidad) ─────────────
-  // El login nuevo va por doPost (no deja la contraseña en el querystring ni
-  // en los logs de Google), pero se mantiene esta variante GET mientras el
-  // frontend viejo cacheado la siga usando. Emite el mismo token que doPost,
-  // así una vez que el frontend se actualiza esta rama queda sin uso.
+  // ── Login: SOLO por doPost ─────────────────────────────────
+  // Antes existía acá una variante GET por compatibilidad con el frontend
+  // viejo cacheado. Dejaba la contraseña en el querystring (y por lo tanto en
+  // los logs de Google), así que se eliminó. No evalúa credenciales: responde
+  // el mismo error genérico siempre.
   if (action === 'login') {
-    const username = e.parameter.u || '';
-    const sup = _authSupervisor(username, e.parameter.p || '');
-    if (!sup) {
-      const exists = _getSupervisorRaw(username);
-      return _ok({ ok: false, error: exists ? 'Contraseña incorrecta' : 'Usuario no encontrado' });
-    }
-    return _ok({ ok: true, token: _issueToken(username, sup), supervisor: {
-      name: sup.name, username: username, zona: sup.zona, isAdmin: sup.isAdmin || false
-    }});
+    return _ok({ ok: false, error: 'El login va por POST' });
   }
 
   // ── Crear spreadsheet nuevo para un supervisor (solo admin) ──
