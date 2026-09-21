@@ -115,10 +115,40 @@ function _resolveToken(data) {
   return { error: 'Sesión vencida — volvé a iniciar sesión', expired: true };
 }
 
+// Admin para las escrituras (doPost). Distingue DOS casos, porque el frontend
+// los trata distinto: token ausente o vencido devuelve expired:true (el
+// wrapper de escrituras pide login y reintenta solo), mientras que un token
+// válido sin permisos es un "No autorizado" liso, que no se arregla
+// volviendo a loguearse. Devuelve { sup, username } o { error, expired? }.
 function _requireAdmin(data) {
   const auth = _resolveToken(data);
-  if (auth.error || !auth.sup || !auth.sup.isAdmin) return null;
-  return auth.sup;
+  if (auth.error) return auth;
+  if (!auth.sup.isAdmin) return { error: 'No autorizado' };
+  return auth;
+}
+
+// Busca un username existente comparando normalizado (trim + minúsculas),
+// para que "Gonza" no pueda crearse encima de "gonza".
+function _buscarUsernameExistente(username) {
+  const buscado = String(username || '').trim().toLowerCase();
+  if (!buscado) return null;
+  const all = _props().getProperties();
+  const keys = Object.keys(all);
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].indexOf('supervisor|') !== 0) continue;
+    const u = keys[i].slice(11);
+    if (u.trim().toLowerCase() === buscado) return u;
+  }
+  return null;
+}
+
+// Cuántos supervisores tienen isAdmin. Se usa para no borrar al último.
+function _contarAdmins() {
+  const all = _props().getProperties();
+  return Object.keys(all).filter(function (k) {
+    if (k.indexOf('supervisor|') !== 0) return false;
+    try { return !!JSON.parse(all[k]).isAdmin; } catch (_) { return false; }
+  }).length;
 }
 
 // Admin para las acciones por GET. Las cuatro herramientas manuales
@@ -126,11 +156,10 @@ function _requireAdmin(data) {
 // ningún front: se invocan pegando la URL en el navegador, así que siguen
 // aceptando usuario+contraseña en el querystring — deuda conocida, ver
 // CLAUDE.md. El límite de intentos de _authSupervisor igual las cubre.
-// También acepta `token`, para las acciones por GET que sí llama el front.
+// Ninguna acción por GET la llama el frontend (createSupervisorSheet, que era
+// la única, pasó a POST), así que solo mira el par u/p.
 function _requireAdminGet(e) {
-  const auth = e.parameter.token
-    ? _resolveToken({ token: e.parameter.token })
-    : _authSupervisor(e.parameter.u || '', e.parameter.p || '');
+  const auth = _authSupervisor(e.parameter.u || '', e.parameter.p || '');
   return (auth.sup && auth.sup.isAdmin) ? auth.sup : null;
 }
 
@@ -402,35 +431,6 @@ function doGet(e) {
     return _ok({ ok: false, error: 'El login va por POST' });
   }
 
-  // ── Crear spreadsheet nuevo para un supervisor (solo admin) ──
-  // Va por GET para poder leer el spreadsheetId/url de vuelta. El frontend ya
-  // no tiene la contraseña del admin (solo el token de sesión), así que este
-  // endpoint acepta `token` además del par u/p que se usa en invocaciones
-  // manuales. Las otras acciones admin por GET (restyleSheet, clearVisitRows,
-  // removeFilter, getDebugLog) no se llaman desde el frontend y siguen igual.
-  if (action === 'createSupervisorSheet') {
-    if (!_requireAdminGet(e)) {
-      return _ok({ ok: false, error: 'No autorizado' });
-    }
-    const template = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-    const nuevo = SpreadsheetApp.create('Arrivata - ' + (e.parameter.nombre || 'Supervisor'));
-    const hojaDefault = nuevo.getSheets()[0]; // la hoja en blanco que Google crea sola
-
-    // Clon exacto de la hoja plantilla (formato, validaciones, todo) — a
-    // diferencia de Range.copyTo(), Sheet.copyTo() SÍ funciona entre
-    // spreadsheets distintos.
-    const hoja = template.copyTo(nuevo);
-    hoja.setName(template.getName());
-    nuevo.deleteSheet(hojaDefault);
-    _removeFilterIfAny(hoja); // copyTo clona un Filter del template si tiene — rompe appendRow y puede ocultar filas
-
-    const clearResult = _clearDataRows(hoja);
-    return _ok({
-      ok: true, spreadsheetId: nuevo.getId(), url: nuevo.getUrl(), sheetName: hoja.getName(),
-      clear: clearResult
-    });
-  }
-
   // ── Aplicar el estilo visual del template a un spreadsheet ya existente ──
   // (solo admin) — para "poner al día" spreadsheets creados antes de este cambio.
   if (action === 'restyleSheet') {
@@ -673,9 +673,16 @@ function doPost(e) {
 
     // ── Crear supervisor (solo admin) ────────────────────────
     if (data.action === 'createSupervisor') {
-      if (!_requireAdmin(data)) return _ok({ ok: false, error: 'No autorizado' });
-      const key = 'supervisor|' + data.newUsername;
-      PropertiesService.getScriptProperties().setProperty(key, JSON.stringify({
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const nuevoUsername = String(data.newUsername || '').trim();
+      if (!nuevoUsername) return _ok({ ok: false, error: 'Falta el nombre de usuario' });
+      // Antes hacía setProperty a secas: crear un supervisor con un usuario que
+      // ya existía lo sobrescribía en silencio. Repitiendo el usuario del admin
+      // se podía reemplazar su propio registro y quedarse sin acceso de admin.
+      const yaExiste = _buscarUsernameExistente(nuevoUsername);
+      if (yaExiste) return _ok({ ok: false, error: 'Ese usuario ya existe' });
+      _props().setProperty('supervisor|' + nuevoUsername, JSON.stringify({
         name: data.nombre, password: data.newPassword, zona: data.zona || '',
         spreadsheetId: data.spreadsheetId || '', sheetName: data.sheetName || '',
         isAdmin: data.isAdmin || false
@@ -685,9 +692,47 @@ function doPost(e) {
 
     // ── Eliminar supervisor (solo admin) ─────────────────────
     if (data.action === 'deleteSupervisor') {
-      if (!_requireAdmin(data)) return _ok({ ok: false, error: 'No autorizado' });
-      PropertiesService.getScriptProperties().deleteProperty('supervisor|' + data.targetUsername);
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const aBorrar = String(data.targetUsername || '').trim();
+      if (!aBorrar) return _ok({ ok: false, error: 'Falta el usuario a eliminar' });
+      // Dos formas de quedarse sin acceso que antes no se controlaban.
+      if (aBorrar.toLowerCase() === String(admin.username || '').trim().toLowerCase()) {
+        return _ok({ ok: false, error: 'No podés eliminar tu propio usuario' });
+      }
+      const sup = _getSupervisorRaw(aBorrar);
+      if (!sup) return _ok({ ok: false, error: 'Ese usuario no existe' });
+      if (sup.isAdmin && _contarAdmins() <= 1) {
+        return _ok({ ok: false, error: 'No se puede eliminar al último admin' });
+      }
+      _props().deleteProperty('supervisor|' + aBorrar);
       return _ok();
+    }
+
+    // ── Crear spreadsheet nuevo para un supervisor (solo admin) ──
+    // Antes vivía en doGet, con el token viajando en la URL (y por lo tanto en
+    // los logs de Google). Va por POST como el resto de las escrituras: la
+    // respuesta con spreadsheetId/url se lee igual.
+    if (data.action === 'createSupervisorSheet') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const template = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+      const nuevo = SpreadsheetApp.create('Arrivata - ' + (data.nombre || 'Supervisor'));
+      const hojaDefault = nuevo.getSheets()[0]; // la hoja en blanco que Google crea sola
+
+      // Clon exacto de la hoja plantilla (formato, validaciones, todo) — a
+      // diferencia de Range.copyTo(), Sheet.copyTo() SÍ funciona entre
+      // spreadsheets distintos.
+      const hoja = template.copyTo(nuevo);
+      hoja.setName(template.getName());
+      nuevo.deleteSheet(hojaDefault);
+      _removeFilterIfAny(hoja); // copyTo clona un Filter del template si tiene — rompe appendRow y puede ocultar filas
+
+      const clearResult = _clearDataRows(hoja);
+      return _ok({
+        ok: true, spreadsheetId: nuevo.getId(), url: nuevo.getUrl(), sheetName: hoja.getName(),
+        clear: clearResult
+      });
     }
 
     // ── Guardar fotos en Drive ───────────────────────────────
