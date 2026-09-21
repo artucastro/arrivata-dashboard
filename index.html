@@ -1190,8 +1190,19 @@ const BRAND_COLORS = { ARRIVATA:'#8B1714', FESTA:'#16a34a', WAPI:'#d97706', CUIS
 const PROD_COLORS = [
   '#8B1714','#A07830','#16a34a','#d97706','#0d9488',
   '#be185d','#0284c7','#65a30d','#c2410c','#6D1010',
-  '#7D5E24','#0891b2'
+  '#7D5E24','#0891b2','#7c3aed'
 ];
+
+// ── Productos dados de alta después del arranque ─────────────
+// El catálogo sale de los encabezados del sheet (ver detectBrands), así que
+// una columna nueva aparece con TODO el histórico vacío: sin esto, un
+// producto recién agregado cuenta como faltante en cada visita anterior a su
+// alta y ningún local puede volver a estar "Completo".
+// Clave: el encabezado EXACTO de la columna. Valor: fecha de alta dd/MM/yyyy.
+// Para dar de alta otro producto, agregá una línea acá y la columna al sheet.
+const PRODUCTO_ALTA = {
+  'Burratina AR': '21/09/2026'
+};
 
 // ── State ────────────────────────────────────────────────────
 const app = {
@@ -1770,6 +1781,14 @@ function processCSV(csv){
 
   const headers = rows[hIdx].map(h=>String(h||'').trim());
   app.brandCols = detectBrands(headers);
+  // Red de seguridad para el alta de productos: si el encabezado del sheet no
+  // coincide EXACTO con la clave de PRODUCTO_ALTA, el filtro por fecha queda
+  // sin efecto y el producto contaría como faltante en todo el histórico.
+  Object.keys(PRODUCTO_ALTA).forEach(col=>{
+    if((app.brandCols.ARRIVATA||[]).indexOf(col)===-1){
+      console.warn('[Arrivata] "'+col+'" figura en PRODUCTO_ALTA pero no es una columna del sheet. Revisá que el encabezado sea exactamente ese.');
+    }
+  });
 
   app.raw = rows.slice(hIdx+1)
     .filter(r => String(r[0]||'').trim().length>0)
@@ -1991,11 +2010,14 @@ function getChartData(datos, data){
         .map((d,i)=>({...d, color:PROD_COLORS[i%PROD_COLORS.length]}));
     }
     case 'local_variedad': {
-      const arrCols=app.brandCols.ARRIVATA||[];
+      // Denominador por local: los productos vigentes en sus propias visitas
       const lm={};
-      data.forEach(r=>{ const n=r['Local']; if(!n) return; lm[n]=lm[n]||new Set(); arrCols.forEach(c=>{ if(colPresent(r,c)) lm[n].add(c); }); });
-      return Object.entries(lm).map(([n,seen])=>({
-        label:n.length>24?n.slice(0,24)+'…':n, value:arrCols.length?Math.round(seen.size/arrCols.length*100):0
+      data.forEach(r=>{ const n=r['Local']; if(!n) return;
+        const b=lm[n]||(lm[n]={seen:new Set(), aplica:new Set()});
+        arrColsDeVisita(r).forEach(c=>{ b.aplica.add(c); if(colPresent(r,c)) b.seen.add(c); });
+      });
+      return Object.entries(lm).map(([n,b])=>({
+        label:n.length>24?n.slice(0,24)+'…':n, value:b.aplica.size?Math.round(b.seen.size/b.aplica.size*100):0
       })).sort((a,b)=>b.value-a.value).slice(0,10)
         .map((d,i)=>({...d, color:PROD_COLORS[i%PROD_COLORS.length]}));
     }
@@ -2177,11 +2199,15 @@ function calcFaltantesPorProducto(){
   if(!totalLocales) return [];
 
   return arrCols.map(col=>{
-    const presentes=lastVisits.filter(r=>colPresent(r,col));
-    const faltantes=lastVisits.filter(r=>!colPresent(r,col)).map(r=>r['Local']);
-    const cobertura=Math.round(presentes.length/totalLocales*100);
-    return { producto:colLabel(col), cobertura, presentes:presentes.length, faltantes, totalLocales };
-  }).sort((a,b)=>a.cobertura-b.cobertura);
+    // Solo cuentan los locales cuya última visita es posterior al alta del
+    // producto: si no, un producto nuevo aparece como "falta en todos".
+    const aplica=lastVisits.filter(r=>productoAplica(r,col));
+    if(!aplica.length) return null;
+    const presentes=aplica.filter(r=>colPresent(r,col));
+    const faltantes=aplica.filter(r=>!colPresent(r,col)).map(r=>r['Local']);
+    const cobertura=Math.round(presentes.length/aplica.length*100);
+    return { producto:colLabel(col), cobertura, presentes:presentes.length, faltantes, totalLocales:aplica.length };
+  }).filter(Boolean).sort((a,b)=>a.cobertura-b.cobertura);
 }
 
 function renderFaltantes(){
@@ -2219,7 +2245,7 @@ function renderFaltantes(){
 // ══════════════════════════════════════════════════════════════
 
 function getStatusForRow(row){
-  const arrCols=app.brandCols.ARRIVATA||[];
+  const arrCols=arrColsDeVisita(row);
   const total=arrCols.length;
   if(!total) return null;
   const present=arrCols.filter(c=>{ const v=String(row[c]||'').trim(); return v!==''&&v!=='0'; }).length;
@@ -2287,6 +2313,26 @@ function parseQty(v){ if(!v||String(v).trim()==='') return 0; const n=parseInt(S
 function colLabel(col){ return col.replace(/\s*(AR|FES|WA|CUI|CARRE)$/i,'').trim(); }
 // Misma lógica que hasPresence pero para una columna concreta — garantiza coherencia entre stats
 function colPresent(row, col){ const v=String(row[col]||'').trim(); return v!==''&&v!=='0'; }
+
+// ¿Este producto corresponde a esta visita? Un producto dado de alta después
+// (ver PRODUCTO_ALTA) no cuenta como faltante en las visitas anteriores.
+// Si la celda YA tiene un dato, cuenta igual: un relevamiento cargado a mano
+// nunca se ignora, aunque la fecha sea anterior al alta.
+function productoAplica(row, col){
+  const alta=PRODUCTO_ALTA[col];
+  if(!alta) return true;
+  if(colPresent(row,col)) return true;
+  const d=parseDate(row['FECHA']), da=parseDate(alta);
+  return !!(d && da && d>=da);
+}
+
+// Columnas Arrivata que corresponden a UNA visita. Se usa en todos los
+// cálculos donde el total de productos es el denominador o donde se listan
+// faltantes; los que filtran por "tiene datos" (productStats, el gráfico de
+// producto, la tabla del detalle) no lo necesitan.
+function arrColsDeVisita(row){
+  return (app.brandCols.ARRIVATA||[]).filter(c=>productoAplica(row,c));
+}
 
 function openDetail(localName, from='main'){
   if(!localName) return;
@@ -3134,11 +3180,12 @@ function getRichStats(fromDate, toDate, sourceData){
     const z=r._zona||'—'; if(z==='—') return;
     const b=zmap[z]||(zmap[z]={visitas:0,locales:new Set(),quesos:0,conFaltante:0,completo:0,falt:{},porLocal:{}});
     b.visitas++; if(r['Local']) b.locales.add(r['Local']);
-    const presentes=arrCols.filter(c=>colPresent(r,c));
-    const q=arrCols.reduce((s,c)=>s+parseQty(r[c]),0);
+    const cols=arrColsDeVisita(r); // productos vigentes en esta visita
+    const presentes=cols.filter(c=>colPresent(r,c));
+    const q=cols.reduce((s,c)=>s+parseQty(r[c]),0);
     b.quesos+=q;
-    if(arrCols.length && presentes.length===arrCols.length) b.completo++; else b.conFaltante++;
-    arrCols.forEach(c=>{ if(!colPresent(r,c)) b.falt[colLabel(c)]=(b.falt[colLabel(c)]||0)+1; });
+    if(cols.length && presentes.length===cols.length) b.completo++; else b.conFaltante++;
+    cols.forEach(c=>{ if(!colPresent(r,c)) b.falt[colLabel(c)]=(b.falt[colLabel(c)]||0)+1; });
     if(r['Local']) b.porLocal[r['Local']]=(b.porLocal[r['Local']]||0)+q;
   });
   const porZona=Object.entries(zmap).map(([z,b])=>{
@@ -3573,7 +3620,8 @@ function calcLocalScore(localName){
   const visits=app.raw.filter(r=>r['Local']===localName&&parseDate(r['FECHA'])>=cutoff);
   if(!visits.length) return null;
 
-  const arrCols=app.brandCols.ARRIVATA;
+  // Denominador: los productos vigentes en alguna visita de la ventana
+  const arrCols=(app.brandCols.ARRIVATA||[]).filter(c=>visits.some(v=>productoAplica(v,c)));
   const totalProds=arrCols.length;
   const withArr=visits.filter(v=>arrCols.some(c=>parseQty(v[c])>0)).length;
   const uniqueSeen=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0)).length;
@@ -3601,7 +3649,7 @@ function getLastVisitForLocal(localName){
 function getPortfolioStatus(localName){
   const last=getLastVisitForLocal(localName);
   if(!last) return null;
-  const arrCols=app.brandCols.ARRIVATA;
+  const arrCols=arrColsDeVisita(last.row);
   const missing=arrCols.filter(c=>!colPresent(last.row,c)).map(c=>colLabel(c));
   const total=arrCols.length;
   const present=total-missing.length;
