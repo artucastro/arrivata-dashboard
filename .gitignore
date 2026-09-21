@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 .env
+Arrivata/
+*.xlsx
+*.pdf
+.DS_Store
