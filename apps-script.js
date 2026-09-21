@@ -188,6 +188,51 @@ function _buildVisitaRow(headers, data, target) {
   });
 }
 
+// Corre una escritura que no puede pisarse con otra igual (updateVisita,
+// savePhoto: las dos son leer-modificar-escribir). A diferencia de saveVisita
+// —que ante un lock vencido prefiere seguir sin lock antes que perder una
+// visita cargada a mano— acá NO se sigue sin lock: se devuelve un error
+// reintentable SIN haber escrito nada.
+function _conLock(fn) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (e) {
+    return _ok({ ok: false, error: 'Sistema ocupado, probá de nuevo', busy: true });
+  }
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Igual que _buildVisitaRow pero para EDITAR una fila que ya existe: parte de
+// los valores que la fila tiene hoy y solo pisa las celdas que el payload trae
+// y el encabezado reconoce. Antes se reconstruía la fila entera con
+// _buildVisitaRow, así que cualquier columna que este script no conoce (por
+// ejemplo una "Observaciones internas" agregada a mano en el Sheet) se
+// blanqueaba al editar la visita.
+function _mergeVisitaRow(headers, filaActual, data, target) {
+  const actualDe = function (i) {
+    return (filaActual && i < filaActual.length && filaActual[i] !== undefined) ? filaActual[i] : '';
+  };
+  return headers.map(function (h, i) {
+    const actual = actualDe(i);
+    if (h === 'FECHA') return data.fecha || actual;
+    if (/^d[iíI][aá]$/i.test(h.trim())) return data.dia || actual;
+    if (h === 'Local') return data.local || actual;
+    if (h === 'Ubicación' || h === 'Ubicacion') return data.ubicacion || actual;
+    if (h === 'Supervisor') return target.name || actual;
+    // Los productos que el formulario manejó vienen SIEMPRE en data.productos
+    // (los que el supervisor marcó "NO" viajan como ''), así que un producto
+    // se puede seguir vaciando. Lo que no está en data.productos es una
+    // columna que el formulario no conoce: se deja tal cual estaba.
+    if (data.productos && h in data.productos) return data.productos[h];
+    return actual;
+  });
+}
+
 // Borra el contenido (valores Y fórmulas) de las filas de datos de una hoja,
 // dejando el header intacto. Hace flush() y relee para confirmar que
 // realmente quedó vacío (por si alguna fórmula tipo IMPORTRANGE la repuebla).
@@ -729,32 +774,34 @@ function doPost(e) {
       if (resolved.error) return _ok({ ok: false, error: resolved.error, expired: resolved.expired });
       const target = resolved.target;
 
-      const ss = _openSpreadsheetForSupervisor(target);
-      const sheet = (target.sheetName && ss.getSheetByName(target.sheetName)) || ss.getSheets()[0];
+      return _conLock(function () {
+        const ss = _openSpreadsheetForSupervisor(target);
+        const sheet = (target.sheetName && ss.getSheetByName(target.sheetName)) || ss.getSheets()[0];
 
-      const allValues = sheet.getDataRange().getValues();
-      const hIdx = allValues.findIndex(function (r) {
-        return String(r[0]).trim().toUpperCase() === 'FECHA';
+        const allValues = sheet.getDataRange().getValues();
+        const hIdx = allValues.findIndex(function (r) {
+          return String(r[0]).trim().toUpperCase() === 'FECHA';
+        });
+        if (hIdx === -1) throw new Error('No se encontró la fila FECHA en la hoja ' + sheet.getName());
+        const headers = allValues[hIdx].map(function (h) { return String(h).trim(); });
+        const localIdx = headers.findIndex(function (h) { return h === 'Local'; });
+
+        const origLocal = String(data.origLocal || '').trim();
+        const origFecha = String(data.origFecha || '').trim();
+        let rowIdx = -1;
+        for (let i = hIdx + 1; i < allValues.length; i++) {
+          const fechaMatch = _fmtFecha(allValues[i][0]) === origFecha;
+          const localMatch = localIdx === -1 || String(allValues[i][localIdx]).trim() === origLocal;
+          if (fechaMatch && localMatch) { rowIdx = i; break; }
+        }
+        if (rowIdx === -1) {
+          return _ok({ ok: false, error: 'No se encontró la visita original — puede que ya se haya editado o borrado.' });
+        }
+
+        const row = _mergeVisitaRow(headers, allValues[rowIdx], data, target);
+        sheet.getRange(rowIdx + 1, 1, 1, row.length).setValues([row]);
+        return _ok();
       });
-      if (hIdx === -1) throw new Error('No se encontró la fila FECHA en la hoja ' + sheet.getName());
-      const headers = allValues[hIdx].map(function (h) { return String(h).trim(); });
-      const localIdx = headers.findIndex(function (h) { return h === 'Local'; });
-
-      const origLocal = String(data.origLocal || '').trim();
-      const origFecha = String(data.origFecha || '').trim();
-      let rowIdx = -1;
-      for (let i = hIdx + 1; i < allValues.length; i++) {
-        const fechaMatch = _fmtFecha(allValues[i][0]) === origFecha;
-        const localMatch = localIdx === -1 || String(allValues[i][localIdx]).trim() === origLocal;
-        if (fechaMatch && localMatch) { rowIdx = i; break; }
-      }
-      if (rowIdx === -1) {
-        return _ok({ ok: false, error: 'No se encontró la visita original — puede que ya se haya editado o borrado.' });
-      }
-
-      const row = _buildVisitaRow(headers, data, target);
-      sheet.getRange(rowIdx + 1, 1, 1, row.length).setValues([row]);
-      return _ok();
     }
 
     // ── Reportes con IA: proxy a Anthropic (solo supervisores identificados) ──
