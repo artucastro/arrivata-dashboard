@@ -210,6 +210,42 @@ function _removeFilterIfAny(sheet) {
   if (existingFilter) existingFilter.remove();
 }
 
+// Id de Drive dentro de una URL de foto. Conviven DOS formatos guardados:
+//   a) https://script.google.com/macros/s/<dep>/exec?action=getFotoData&id=<id>
+//      (las que sube savePhoto, con el <dep> del deployment de ese momento —
+//      hay ids de deployments viejos guardados, no solo del actual);
+//   b) https://drive.google.com/uc?export=view&id=<id>  (fotos viejas).
+// Por eso se compara el ID, nunca la URL entera.
+function _fotoIdDeUrl(url) {
+  const m = /[?&]id=([A-Za-z0-9_-]+)/.exec(String(url || ''));
+  return m ? m[1] : null;
+}
+
+// Un id de Drive válido es solo [A-Za-z0-9_-]. Se valida ANTES de buscar nada,
+// para no llevar caracteres raros a ninguna consulta.
+function _esIdDriveValido(id) {
+  return /^[A-Za-z0-9_-]{5,200}$/.test(String(id || ''));
+}
+
+// ¿Este id figura en alguna propiedad foto|<local>|<fecha>? Recorrer todas las
+// propiedades cuesta lo mismo que getNotas/getFotos (medido contra el /exec
+// real: la diferencia queda dentro del ruido de red), así que no se cachea.
+function _fotoIdRegistrado(fileId) {
+  if (!_esIdDriveValido(fileId)) return false;
+  const all = _props().getProperties();
+  const keys = Object.keys(all);
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].indexOf('foto|') !== 0) continue;
+    let urls;
+    try { urls = JSON.parse(all[keys[i]]); } catch (_) { continue; }
+    if (!Array.isArray(urls)) urls = [urls];
+    for (let j = 0; j < urls.length; j++) {
+      if (_fotoIdDeUrl(urls[j]) === fileId) return true;
+    }
+  }
+  return false;
+}
+
 // Junta filas (con encabezado FECHA) de un spreadsheet en canonHeaders/dataRows (por referencia).
 function _collectRowsFromSpreadsheet(ss, sheetName, canonHeaders, dataRows) {
   const sheets = sheetName
@@ -349,6 +385,11 @@ function doGet(e) {
   if (action === 'getFotoData') {
     const fileId = e.parameter.id || '';
     if (!fileId) return _ok({ ok: false, error: 'Falta id' });
+    // Este endpoint es público a propósito (gerencia ve las fotos sin login,
+    // ver CLAUDE.md), así que NO puede servir cualquier archivo de Drive que la
+    // cuenta dueña del script pueda leer: solo los que están registrados como
+    // foto de alguna visita. Si no figura, se corta acá sin tocar Drive.
+    if (!_fotoIdRegistrado(fileId)) return _ok({ ok: false, error: 'Foto no encontrada' });
     try {
       const blob = DriveApp.getFileById(fileId).getBlob();
       return _ok({ ok: true, mimeType: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) });
