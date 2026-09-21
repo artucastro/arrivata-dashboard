@@ -24,10 +24,30 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
 - **Gate de la página**: contraseña compartida `Arrivata123` (`arr_auth` en
   `sessionStorage`). Da acceso de solo-lectura al panorama global.
 - **Identidad de supervisor**: login `username` + `password` por `doPost`
-  (`action:'login'`). El backend devuelve un **token de sesión opaco** (TTL 1 h,
-  en `CacheService`) que el cliente guarda como `arr_verified_token` y reenvía
-  en cada escritura (`_authFields` → campo `token`). La contraseña real nunca
-  se persiste ni se reenvía.
+  (`action:'login'`), nunca por GET. El backend devuelve un **token de sesión
+  opaco** (TTL 1 h, en `CacheService`) que el cliente guarda como
+  `arr_verified_token` y reenvía en cada escritura (`_authFields` → campo
+  `token`). La contraseña real nunca se persiste ni se reenvía.
+- **Las escrituras aceptan SOLO token** (`_resolveToken`). Sin token, o con uno
+  vencido, responden `expired:true`, que es la señal que usa el front para
+  pedir login y reintentar la escritura sola. No hay forma de escribir mandando
+  usuario+contraseña: esa rama existía por compatibilidad y permitía probar
+  contraseñas contra cualquier escritura (ej. `saveNota`) salteando el límite
+  de intentos.
+- **Límite de intentos**: 5 fallos por usuario (normalizado a trim +
+  minúsculas) en 15 min, contados en `CacheService` dentro de
+  `_authSupervisor`, que es el único lugar donde se compara una contraseña —
+  así cubre todos los caminos, no solo `action:'login'`. Cuenta también los
+  usuarios inexistentes (si no, el bloqueo delataría cuáles existen) y el
+  mensaje de error es siempre el mismo. Limitación aceptada: al ser por
+  usuario, alguien puede bloquear a un supervisor a propósito por 15 min;
+  Apps Script no expone la IP, así que no hay con qué acotarlo mejor.
+- **`getFotoData` es público a propósito** (gerencia ve las fotos sin login),
+  pero solo sirve archivos cuyo id figure en alguna propiedad `foto|…`: antes
+  devolvía cualquier archivo de Drive legible por la cuenta dueña del script.
+  Compara **ids**, no URLs, porque conviven dos formatos guardados
+  (`…/exec?action=getFotoData&id=`, con ids de deployments viejos, y el viejo
+  `drive.google.com/uc?export=view&id=`).
 - Las **lecturas** (`getVisitas`, `getNotas`, `getFotos`, `getLocalData`,
   `getSupervisors`) son públicas a propósito: gerencia necesita ver el
   panorama global sin perfil de supervisor.
@@ -45,8 +65,8 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
   reintenta la misma escritura UNA sola vez con el token nuevo; si el usuario
   cancela, el formulario queda abierto con sus datos. Es seguro porque el
   backend valida el token antes de escribir. No llamar a `fetch` directo para
-  escribir. Única excepción: `crearSpreadsheetSupervisor` (va por GET), que
-  chequea el reloj antes de mandar.
+  escribir: todas las escrituras, incluida `crearSpreadsheetSupervisor`, pasan
+  por ahí.
 - **Borrador de visita nueva**: `localStorage`, clave
   `arr_visita_draft|<username>`, autoguardado con debounce de 500 ms. Guarda
   texto, SI/NO, cantidades y el `clientId` del intento (para que el backend
@@ -62,6 +82,27 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
   de handlers inline (`onclick="fn('...')"`). El markdown de los reportes pasa
   por `renderMarkdownSafe()` (marked + DOMPurify, sin imágenes/medios); si
   DOMPurify no cargó se muestra texto plano escapado.
+
+## Convenciones del backend (`apps-script.js`)
+
+- **Locks**: `_conLock()` envuelve las escrituras leer-modificar-escribir
+  (`updateVisita`, `savePhoto`). Si no consigue el lock en 20 s devuelve
+  `{ok:false, error:'Sistema ocupado, probá de nuevo', busy:true}` **sin haber
+  escrito nada**. `saveVisita` es la excepción deliberada: ante un lock vencido
+  sigue igual, porque perder una visita recién cargada a mano es peor que el
+  riesgo de duplicarla.
+- **Dedupe de `saveVisita`**: por `clientId` en `CacheService`. Límites a tener
+  en cuenta: dura 6 h (el máximo de `CacheService`), las entradas se pueden
+  desalojar antes, y si el lock vence el dedupe se saltea. O sea que un
+  borrador recuperado al día siguiente y reenviado **sí** puede duplicar la
+  fila. El arreglo de fondo es un id único por visita en una columna del Sheet.
+- **`updateVisita` no reconstruye la fila**: `_mergeVisitaRow` parte de los
+  valores actuales y solo pisa las celdas que el payload trae y el encabezado
+  reconoce, así una columna agregada a mano al Sheet no se blanquea al editar.
+- **Fotos al editar**: si la edición cambia local o fecha, `_migrarFotos` mueve
+  las propiedades `foto|…` dentro del mismo lock, fusionando si la clave nueva
+  ya tenía fotos y escribiendo la nueva **antes** de borrar la vieja. La nota
+  la migra el front; `localdata|` no se migra (ver deuda técnica).
 
 ## Reglas de trabajo
 
@@ -91,16 +132,26 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
 - `index.html` es un monolito de ~4.900 líneas sin tests ni build; Tailwind
   play-CDN en producción; varias dependencias de CDN (solo DOMPurify lleva
   versión fija + SRI).
-- Las acciones de admin (`createSupervisor`, `deleteSupervisor`,
-  `createSupervisorSheet`) responden "No autorizado" sin `expired:true` cuando
-  el token venció, así que para ellas el re-login automático depende solo del
-  reloj local de 55 min. Fix pendiente en `_requireAdmin` (backend).
 - Las lecturas paralelas al arrancar (`getNotas`, `getFotos`, `getLocalData`)
   fallan en silencio de forma intermitente contra el Apps Script real (se
   tragan con `.catch(()=>{})`): los indicadores de nota/foto pueden faltar
   hasta el próximo auto-refresh de 5 min.
 - Notas, fotos y datos de local se guardan con clave global (`nota|<local>|...`,
   `localdata|<local>`), no por supervisor: una zona puede pisar datos de otra.
+  Ya pasa en la práctica: "Coto Cabildo" existe en los sheets de dos
+  supervisores distintos.
+- Las cuatro herramientas manuales por GET (`restyleSheet`, `clearVisitRows`,
+  `removeFilter`, `getDebugLog`) siguen aceptando usuario+contraseña en la URL,
+  así que la contraseña del admin queda en el historial del navegador y en los
+  logs de Google. `clearVisitRows` además borra datos. Pasarlas a POST con
+  token queda pendiente. Mientras tanto las cubre el límite de intentos.
+- Al editar una visita cambiando el nombre del local, `localdata|<local>` queda
+  huérfano: no se migra porque la clave es global y sin fecha, así que moverla
+  puede robarle los datos a otra visita del mismo local. Va junto con los ids
+  únicos por visita.
+- `updateVisita` ubica la fila por local + fecha y toma la primera
+  coincidencia: si hay dos visitas del mismo local el mismo día (ya pasó con
+  "Jumbo Palermo" el 27/08) siempre edita la primera.
 - `CacheService` (donde viven los tokens de sesión) no es persistente entre
   reinicios del script y tiene límite de tamaño por entrada. Con TTL de 1 h no
   es un problema práctico; para sesiones más largas habría que pasar a
