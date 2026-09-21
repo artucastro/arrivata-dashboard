@@ -333,6 +333,40 @@ function _fotoIdRegistrado(fileId) {
   return false;
 }
 
+function _fotoKey(local, fecha) { return 'foto|' + local + '|' + fecha; }
+
+// Lista de URLs guardada bajo una clave foto|… ([] si no hay o está corrupta).
+function _leerFotos(key) {
+  try {
+    const v = JSON.parse(_props().getProperty(key) || '[]');
+    return Array.isArray(v) ? v : [v];
+  } catch (_) { return []; }
+}
+
+// Mueve las fotos de una visita cuando la edición le cambió el local o la
+// fecha: la clave es foto|<local>|<fecha>, así que sin esto las fotos quedaban
+// colgadas de la clave vieja y desaparecían de la visita.
+// Se llama DENTRO del lock de updateVisita. Si la clave nueva ya tiene fotos
+// se fusionan (nunca se pisan), y se escribe la nueva ANTES de borrar la
+// vieja: si algo falla en el medio, las fotos quedan duplicadas —recuperables—
+// en vez de perdidas.
+// La NOTA no se toca acá: la migra el frontend (borra la vieja y escribe la
+// nueva con saveNota). Los datos del local (localdata|<local>) tampoco: van
+// con clave global y sin fecha, así que moverlos puede robarle los datos a
+// otra visita del mismo local — queda para la etapa de ids únicos.
+function _migrarFotos(origLocal, origFecha, local, fecha) {
+  const keyVieja = _fotoKey(origLocal, origFecha);
+  const keyNueva = _fotoKey(local, fecha);
+  if (keyVieja === keyNueva) return { migradas: 0 };
+  const viejas = _leerFotos(keyVieja);
+  if (!viejas.length) return { migradas: 0 };
+  const nuevas = _leerFotos(keyNueva);
+  const fusion = nuevas.concat(viejas.filter(function (u) { return nuevas.indexOf(u) === -1; }));
+  _props().setProperty(keyNueva, JSON.stringify(fusion));
+  _props().deleteProperty(keyVieja);
+  return { migradas: viejas.length };
+}
+
 // Junta filas (con encabezado FECHA) de un spreadsheet en canonHeaders/dataRows (por referencia).
 function _collectRowsFromSpreadsheet(ss, sheetName, canonHeaders, dataRows) {
   const sheets = sheetName
@@ -674,11 +708,16 @@ function doPost(e) {
         // el hotlinking poco confiable de "drive.google.com/...".
         return ScriptApp.getService().getUrl() + '?action=getFotoData&id=' + file.getId();
       });
-      const key = 'foto|' + local + '|' + fecha;
-      var existing = [];
-      try { existing = JSON.parse(PropertiesService.getScriptProperties().getProperty(key) || '[]'); } catch (_) {}
-      PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(existing.concat(urls)));
-      return _ok();
+      // Leer-modificar-escribir: sin lock, dos subidas simultáneas a la misma
+      // visita (o una subida mientras updateVisita migra las fotos) se pisan y
+      // se pierden URLs. Los archivos ya están en Drive a esta altura: el lock
+      // protege el índice, no la subida.
+      return _conLock(function () {
+        const key = _fotoKey(local, fecha);
+        const existing = _leerFotos(key);
+        _props().setProperty(key, JSON.stringify(existing.concat(urls)));
+        return _ok();
+      });
     }
 
     // ── Guardar locales base de un supervisor (autocompletado) ──
@@ -800,7 +839,11 @@ function doPost(e) {
 
         const row = _mergeVisitaRow(headers, allValues[rowIdx], data, target);
         sheet.getRange(rowIdx + 1, 1, 1, row.length).setValues([row]);
-        return _ok();
+
+        // Si la edición cambió el local o la fecha, las fotos se mudan con la
+        // visita (misma transacción lógica: ya dentro de este lock).
+        const fotos = _migrarFotos(origLocal, origFecha, data.local || origLocal, data.fecha || origFecha);
+        return _ok({ ok: true, fotosMigradas: fotos.migradas });
       });
     }
 
