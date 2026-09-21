@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lato:wght@300;400;700&display=swap');
@@ -2733,7 +2734,7 @@ async function generateReport(type){
     }
     if(scope!=='all') title+=' · '+scopeLabel;
     document.getElementById('report-title').textContent=title;
-    document.getElementById('report-output').innerHTML=marked.parse(app.reportText);
+    document.getElementById('report-output').innerHTML=renderMarkdownSafe(app.reportText);
     if(usarGuiado && app._lastRich) renderRastrillajeCharts(app._lastRich);
     else if(type==='personalizado'&&rtype==='profesional') renderReportCharts(fromDate,toDate,data);
     document.getElementById('report-wrap').style.display='block';
@@ -2756,6 +2757,27 @@ async function generateReport(type){
     document.getElementById('btn-custom').disabled=false;
     document.getElementById('btn-custom').innerHTML=icCustom+' Generar Reporte';
   }
+}
+
+// Markdown de la IA → HTML seguro. El texto del informe no es confiable (lo
+// arma un modelo a partir de datos del sheet y de archivos adjuntos), así que
+// lo que devuelve marked pasa SIEMPRE por DOMPurify antes de tocar el DOM. Si
+// alguna de las dos librerías no cargó, se muestra el texto plano escapado:
+// nunca se inserta HTML sin sanitizar.
+function renderMarkdownSafe(md){
+  const texto=String(md||'');
+  if(window.DOMPurify && window.marked && typeof marked.parse==='function'){
+    // Un informe es texto, listas y tablas: no necesita imágenes/medios
+    // (una imagen remota permitiría sacar datos del informe por la URL),
+    // formularios ni estilos propios.
+    try{
+      return DOMPurify.sanitize(marked.parse(texto), {
+        FORBID_TAGS:['img','picture','source','video','audio','svg','math','form','input','button','textarea','select','style'],
+        FORBID_ATTR:['style']
+      });
+    }catch(e){}
+  }
+  return `<pre style="white-space:pre-wrap;font-family:inherit;margin:0">${esc(texto)}</pre>`;
 }
 
 // Anthropic puede anteponer bloques que no son de texto (p.ej. razonamiento)
@@ -3250,7 +3272,7 @@ function downloadReportAsPDF(){
   }
 
   document.getElementById('print-report').innerHTML=`
-    <h1>${title}</h1>
+    <h1>${esc(title)}</h1>
     <p class="pr-meta">Generado por Arrivata Dashboard · ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</p>
     ${chartsHtml}
     ${outputEl.innerHTML}
@@ -3717,9 +3739,10 @@ function parseDate(str){ if(!str) return null; const p=String(str).split('/'); i
 function fmtDate(d){ return d?d.toLocaleDateString('es-AR',{day:'numeric',month:'short'}):''; }
 function setLoading(on){ document.getElementById('lbar').style.display=on?'block':'none'; }
 function showError(msg){ document.getElementById('empty').style.display='block'; document.getElementById('dash').style.display='none'; document.getElementById('empty-error').style.display='block'; document.getElementById('empty-error-msg').textContent=msg; }
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-// esc() sirve para texto y para atributos delimitados por comillas dobles,
-// pero NO escapa la comilla simple ni la barra invertida. Muchos handlers
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// esc() sirve para texto y para atributos HTML (con comillas dobles o
+// simples), pero NO alcanza para un string JS: el navegador decodifica las
+// entidades del atributo ANTES de ejecutar el handler. Muchos handlers
 // inline se arman como onclick="fn('${...}')" — un local llamado, por ej.,
 // "Almacén O'Higgins" rompía el handler (SyntaxError) y el botón dejaba de
 // responder. escJs() escapa para un string JS entre comillas simples que
@@ -4051,7 +4074,7 @@ function renderLocalData(localName){
   }
   content.innerHTML=fields.filter(f=>f.val).map(f=>`
     <div><span style="color:var(--muted);font-weight:700">${f.label}:</span></div>
-    <div style="color:var(--text)">${f.val.replace(/\n/g,'<br>')}</div>
+    <div style="color:var(--text)">${esc(f.val).replace(/\n/g,'<br>')}</div>
   `).join('');
 }
 
@@ -4441,9 +4464,9 @@ function renderVFProducts(){
         const id=col.replace(/\W/g,'_');
         return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #F0E8D4">
           <span style="flex:1;font-size:.83rem;color:var(--text);min-width:0">${esc(colLabel(col))}</span>
-          <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','si')" id="vf-si-${id}"
+          <button onclick="setProductSN('${escJs(col)}','si')" id="vf-si-${id}"
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">SI</button>
-          <button onclick="setProductSN('${col.replace(/'/g,"\\'")}','no')" id="vf-no-${id}"
+          <button onclick="setProductSN('${escJs(col)}','no')" id="vf-no-${id}"
             style="min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;border:2px solid #D1C5B0;background:#fff;color:#A09078;cursor:pointer">NO</button>
           <span id="vf-qtywrap-${id}" style="display:none;align-items:center;gap:3px">
             <button type="button" onmousedown="event.preventDefault()" onclick="qtyInsert('${id}','-')"
