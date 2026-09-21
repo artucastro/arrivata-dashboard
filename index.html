@@ -416,7 +416,16 @@
 
 <!-- ── MODAL: CARGAR VISITA ──────────────────────────────────── -->
 <div id="modal-visita" class="modal-backdrop" style="display:none;z-index:60">
-  <div class="modal" style="max-width:520px;width:96%;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+  <div class="modal" style="position:relative;max-width:520px;width:96%;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <!-- Aviso de borrador sin guardar: tapa el formulario hasta que se elija (ver showVFDraftPrompt) -->
+    <div id="vf-draft-prompt" style="display:none;position:absolute;inset:0;z-index:5;background:rgba(255,255,255,.97);flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center">
+      <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:1.05rem;color:var(--red)">Tenés una visita sin guardar</div>
+      <div id="vf-draft-info" style="font-size:.84rem;color:var(--text);line-height:1.6"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+        <button type="button" class="btn btn-blue" onclick="recuperarVFDraft()" style="padding:10px 18px">Recuperar borrador</button>
+        <button type="button" class="btn btn-ghost" onclick="descartarVFDraft()" style="padding:10px 18px">Descartar</button>
+      </div>
+    </div>
     <!-- Header -->
     <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div>
@@ -472,7 +481,7 @@
 </div>
 
 <!-- ── MODAL: VERIFICAR IDENTIDAD ────────────────────────────── -->
-<div id="modal-verificar" class="modal-backdrop" style="display:none;z-index:55">
+<div id="modal-verificar" class="modal-backdrop" style="display:none;z-index:120">
   <div class="modal" style="max-width:320px;width:92%;padding:24px">
     <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--red);margin-bottom:4px">Verificar identidad</div>
     <div id="ver-subtitle" style="font-size:.74rem;color:var(--muted);margin-bottom:16px">Ingresá tu usuario y contraseña para continuar</div>
@@ -486,7 +495,7 @@
     <div id="ver-loading" style="display:none;color:var(--muted);font-size:.75rem;margin-bottom:8px">Verificando...</div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button id="ver-btn" class="btn btn-blue" onclick="verificarYProceder()" style="flex:1">Confirmar</button>
-      <button class="btn btn-ghost" onclick="document.getElementById('modal-verificar').style.display='none'">Cancelar</button>
+      <button class="btn btn-ghost" onclick="cancelarVerificacion()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1233,8 +1242,33 @@ function showToast(message, type='success'){
 // con clientId) — Apps Script ya ejecutó la acción del lado del servidor
 // antes de que el cliente sepa si la respuesta llegó bien o no, así que
 // reintentar una acción no idempotente puede duplicar datos.
+//
+// postAction() es el ÚNICO punto por donde pasan las escrituras autenticadas
+// (las que llevan `token`, ver _authFields). Si la sesión venció no se pierde
+// lo que el usuario tenía cargado:
+//  - si el reloj local ya la da por vencida, pide login ANTES de mandar nada;
+//  - si el backend responde expired:true, pide login por encima del
+//    formulario abierto y reintenta la misma escritura UNA sola vez con el
+//    token nuevo. Es seguro reenviar: el backend valida el token antes de
+//    escribir, así que un pedido rechazado por sesión vencida no guardó nada.
+//  - si el usuario cancela el login, devuelve el error y el formulario que
+//    llamó queda abierto con sus datos.
 async function postAction(payload, retries=0){
   if(!app.cfg.scriptUrl) return {ok:false, error:'Falta configurar la URL del Apps Script.'};
+  if(!('token' in payload)) return _postOnce(payload, retries);
+  const SIN_SESION={ok:false, expired:true, error:'Sesión vencida — iniciá sesión de nuevo para guardar.'};
+  const conSesionNueva=()=>({...payload, username:(app.supervisor&&app.supervisor.username)||payload.username, token:_verifiedToken});
+  if(!_sesionVigente()){
+    if(!(await pedirRelogin())) return SIN_SESION;
+    return _postOnce(conSesionNueva(), retries);
+  }
+  const j=await _postOnce(payload, retries);
+  if(!(j && j.expired)) return j;
+  if(!(await pedirRelogin())) return j;
+  return _postOnce(conSesionNueva(), retries); // un solo reintento: si vuelve a fallar, se devuelve el error
+}
+
+async function _postOnce(payload, retries=0){
   for(let attempt=0; attempt<=retries; attempt++){
     try{
       const r=await fetch(app.cfg.scriptUrl,{
@@ -1368,6 +1402,10 @@ async function crearSpreadsheetSupervisor(){
   const nombre=document.getElementById('ns-nombre').value.trim()||'Supervisor';
   const msgEl=document.getElementById('ns-spreadsheet-msg');
   if(!app.cfg.scriptUrl){ msgEl.textContent='Falta URL del Apps Script.'; msgEl.style.color='#dc2626'; return; }
+  // Única escritura que no pasa por postAction() (va por GET para poder leer
+  // la respuesta): el backend contesta "No autorizado" sin avisar expired, así
+  // que acá el vencimiento se ataja con el reloj local antes de mandar nada.
+  if(!_sesionVigente()) await pedirRelogin();
   const auth=_authFields();
   if(!auth.username||!auth.token){ msgEl.textContent='Identificate como admin primero.'; msgEl.style.color='#dc2626'; return; }
   msgEl.textContent='Creando spreadsheet…'; msgEl.style.color='var(--muted)';
@@ -1633,7 +1671,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(sessionStorage.getItem('arr_auth')==='1'){
     document.getElementById('login-page').style.display='none';
     // Restaurar perfil del supervisor y la sesión verificada (sobrevive a
-    // un F5 mientras no pasen los 60 min; sessionStorage se borra solo al
+    // un F5 mientras no pasen los 55 min desde el login; sessionStorage se borra solo al
     // cerrar la pestaña/navegador)
     const supStr=sessionStorage.getItem('arr_supervisor');
     if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
@@ -1701,6 +1739,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   initCustomSelects();
+
+  // Autoguardado del borrador de visita nueva (ver saveVFDraftNow)
+  const mv=document.getElementById('modal-visita');
+  ['input','change'].forEach(ev=>mv.addEventListener(ev, scheduleVFDraftSave));
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') saveVFDraftNow(); });
 });
 
 // ── Modal de configuración ────────────────────────────────────
@@ -2515,9 +2558,9 @@ async function generateReport(type){
   // Los reportes con IA pasan por el Apps Script (que guarda la key de Anthropic
   // del lado del servidor) y quedan restringidos a supervisores identificados —
   // si todavía no se identificó nadie en esta sesión, pedirlo primero.
-  // Sin supervisor identificado, o con la sesión ya vencida (el token dura lo
-  // mismo que VERIFY_TTL_MS): pedir identificación antes de llamar a la IA.
-  if(!app.supervisor || (Date.now()-_verifiedAt)>=VERIFY_TTL_MS){ abrirVerificacion('generarReporte', type); return; }
+  // Sin supervisor identificado, o con la sesión ya vencida según el reloj
+  // local (ver VERIFY_TTL_MS): pedir identificación antes de llamar a la IA.
+  if(!_sesionVigente()){ abrirVerificacion('generarReporte', type); return; }
 
   const corsEl=document.getElementById('cors-warn');
   const apiErrEl=document.getElementById('api-err-warn');
@@ -3744,6 +3787,99 @@ let VF_CLIENT_ID=null;
 // cambia el local o la fecha en el propio formulario.
 let VF_EDIT=null;
 
+// ── Borrador de visita NUEVA (localStorage) ─────────────────────
+// Mientras se carga una visita nueva, los campos se autoguardan para que un
+// cierre de pestaña / recarga / batería no obligue a relevar de nuevo. Solo
+// texto, SI/NO y cantidades: las fotos no entran (en base64 revientan la
+// cuota de localStorage). No aplica al formulario de EDICIÓN (VF_EDIT). Se
+// borra solo tras un guardado confirmado por el backend o un descarte
+// explícito. Todo acceso a localStorage va en try/catch: si falla (modo
+// privado, cuota), el formulario sigue funcionando sin borrador.
+const VF_DRAFT_PREFIX='arr_visita_draft|';
+let _vfDraftTimer=null;
+let _vfDraftPaused=false; // true mientras se ofrece recuperar/descartar, y tras guardar OK
+let _vfDraftPendiente=null;
+
+function _vfDraftKey(){ return VF_DRAFT_PREFIX+((app.supervisor&&app.supervisor.username)||'anon'); }
+function readVFDraft(){
+  try{ const raw=localStorage.getItem(_vfDraftKey()); const d=raw?JSON.parse(raw):null; return (d&&typeof d==='object')?d:null; }
+  catch(e){ return null; }
+}
+function clearVFDraft(){
+  clearTimeout(_vfDraftTimer);
+  try{ localStorage.removeItem(_vfDraftKey()); }catch(e){}
+}
+function scheduleVFDraftSave(){
+  clearTimeout(_vfDraftTimer);
+  _vfDraftTimer=setTimeout(saveVFDraftNow, 500);
+}
+function saveVFDraftNow(){
+  clearTimeout(_vfDraftTimer);
+  if(VF_EDIT || _vfDraftPaused) return;
+  if(document.getElementById('modal-visita').style.display==='none') return;
+  const sn={};
+  Object.keys(VF).forEach(col=>{ if(VF[col]&&VF[col].sn) sn[col]=VF[col].sn; });
+  const local=document.getElementById('vf-local').value.trim();
+  const nota=document.getElementById('vf-nota').value;
+  if(!local && !nota.trim() && !Object.keys(sn).length) return; // nada que valga la pena guardar
+  try{
+    localStorage.setItem(_vfDraftKey(), JSON.stringify({
+      v:1, savedAt:Date.now(), zone:app.viewZone, clientId:VF_CLIENT_ID,
+      local, ubic:document.getElementById('vf-ubic').value.trim(),
+      fecha:document.getElementById('vf-fecha').value, nota,
+      sn, qty:{...VF_QTY}, fotos:VF_PHOTOS.length
+    }));
+  }catch(e){}
+}
+
+function showVFDraftPrompt(d){
+  _vfDraftPaused=true;
+  _vfDraftPendiente=d;
+  const zonaLbl=z=>z==='all'?'Global':(((app.allSupervisors||[]).find(s=>s.username===z)||{}).name||z||'');
+  const [y,m,dd]=String(d.fecha||'').split('-');
+  const partes=[
+    d.local?`Local: ${d.local}`:'Sin local cargado',
+    (y&&m&&dd)?`Fecha de la visita: ${dd}/${m}/${y}`:'',
+    `${Object.keys(d.sn||{}).length} producto(s) marcados`,
+    d.savedAt?`Borrador del ${new Date(d.savedAt).toLocaleString('es-AR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`:'',
+    (d.zone&&d.zone!==app.viewZone)?`Ojo: se empezó en la zona "${zonaLbl(d.zone)}" y ahora estás en "${zonaLbl(app.viewZone)}".`:''
+  ].filter(Boolean);
+  const info=document.getElementById('vf-draft-info');
+  info.textContent='';
+  partes.forEach(t=>{ const div=document.createElement('div'); div.textContent=t; info.appendChild(div); });
+  document.getElementById('vf-draft-prompt').style.display='flex';
+}
+
+function recuperarVFDraft(){
+  const d=_vfDraftPendiente; _vfDraftPendiente=null;
+  document.getElementById('vf-draft-prompt').style.display='none';
+  if(d){
+    document.getElementById('vf-local').value=d.local||'';
+    document.getElementById('vf-ubic').value=d.ubic||'';
+    if(d.fecha) document.getElementById('vf-fecha').value=d.fecha;
+    document.getElementById('vf-nota').value=d.nota||'';
+    // Mismo clientId que el intento original: si aquel guardado en realidad
+    // había llegado al servidor, el backend lo reconoce y no duplica la fila.
+    if(d.clientId) VF_CLIENT_ID=d.clientId;
+    Object.entries(d.sn||{}).forEach(([col,val])=>{ if(VF[col]&&!VF[col].sn) setProductSN(col,val); });
+    Object.entries(d.qty||{}).forEach(([id,val])=>{
+      VF_QTY[id]=val;
+      const inp=document.getElementById(`vf-qty-${id}`);
+      if(inp) inp.value=val;
+    });
+    if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
+    if(d.fotos) showToast('Borrador recuperado. Las fotos no se guardan en el borrador: volvé a agregarlas.');
+  }
+  _vfDraftPaused=false;
+}
+
+function descartarVFDraft(){
+  _vfDraftPendiente=null;
+  clearVFDraft();
+  document.getElementById('vf-draft-prompt').style.display='none';
+  _vfDraftPaused=false;
+}
+
 function compressImage(file){
   return new Promise(resolve=>{
     const reader=new FileReader();
@@ -3781,6 +3917,7 @@ async function addVFPhotos(input){
   }
   input.value='';
   renderVFPhotoPreviews();
+  scheduleVFDraftSave();
   if(hadError) showToast('Alguna imagen no se pudo procesar y se omitió.', 'error');
 }
 
@@ -3796,7 +3933,7 @@ function renderVFPhotoPreviews(){
   if(btn) btn.style.display=VF_PHOTOS.length>=MAX_FOTOS_VISITA?'none':'flex';
 }
 
-function removeVFPhoto(i){ VF_PHOTOS.splice(i,1); renderVFPhotoPreviews(); }
+function removeVFPhoto(i){ VF_PHOTOS.splice(i,1); renderVFPhotoPreviews(); scheduleVFDraftSave(); }
 
 function loadFotosLocal(localName){
   if(!app.cfg.scriptUrl) return;
@@ -3969,6 +4106,8 @@ function openCargarVisita(localName, editRow){
   VF_PHOTOS=[];
   VF_EDIT=editRow ? {local:editRow['Local']||'', origFecha:editRow['FECHA']||''} : null;
   VF_CLIENT_ID=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2)));
+  _vfDraftPaused=false; _vfDraftPendiente=null;
+  document.getElementById('vf-draft-prompt').style.display='none';
   renderVFPhotoPreviews();
 
   // Datalist de locales y direcciones (combina visitados + base asignada)
@@ -4050,9 +4189,17 @@ function openCargarVisita(localName, editRow){
   }
 
   document.getElementById('modal-visita').style.display='flex';
+
+  // Visita NUEVA con un borrador pendiente de este usuario: ofrecer recuperarlo
+  if(!editRow){
+    const draft=readVFDraft();
+    if(draft) showVFDraftPrompt(draft);
+  }
 }
 
-function editVisita(local, fecha){
+function editVisita(local, fecha, verificado){
+  // Con la sesión vencida, pedir login ANTES de abrir el formulario
+  if(!verificado){ abrirVerificacion('editarVisita', {local, fecha}); return; }
   const row=app.raw.find(r=>r['Local']===local && r['FECHA']===fecha);
   if(!row){ showToast('No se encontró esa visita.', 'error'); return; }
   openCargarVisita(local, row);
@@ -4063,7 +4210,11 @@ function cancelarVisita(){
   const hasProducts=Object.values(VF).some(v=>v&&v.sn);
   const hasNota=(document.getElementById('vf-nota').value||'').trim().length>0;
   const hasPhotos=VF_PHOTOS.length>0;
-  if((local||hasProducts||hasNota||hasPhotos) && !confirm('¿Estás seguro que querés cancelar? Se perderán los datos ingresados.')) return;
+  const dirty=!!(local||hasProducts||hasNota||hasPhotos);
+  if(dirty && !confirm('¿Estás seguro que querés cancelar? Se perderán los datos ingresados.')) return;
+  // Cancelar confirmando que se pierden los datos = descarte explícito del
+  // borrador (salvo que todavía se esté ofreciendo uno anterior sin decidir)
+  if(dirty && !VF_EDIT && !_vfDraftPaused) clearVFDraft();
   closeCargarVisita();
 }
 
@@ -4075,12 +4226,20 @@ function closeCargarVisita(){
 // ── Verificación de identidad por supervisor ──────────────────
 let _pendingVerOp=null;
 let _currentOpSupervisor=null;
+// Momento del LOGIN (no de la última actividad): el token del servidor vence
+// fijo a 1 h de emitido, así que este reloj tampoco se renueva con el uso.
 let _verifiedAt=0;
 // Token de sesión opaco emitido por el Apps Script en el login. Se reenvía en
-// cada escritura (ver _authFields) en vez de la contraseña real, y vence al
-// mismo tiempo que VERIFY_TTL_MS (1 h) del lado del servidor.
+// cada escritura (ver _authFields) en vez de la contraseña real.
 let _verifiedToken='';
-const VERIFY_TTL_MS=60*60*1000; // sesión verificada: 60 min de inactividad (sobrevive a recargar la página, se guarda en sessionStorage)
+// 55 min FIJOS desde el login: 5 de margen respecto de la hora que dura el
+// token del lado del servidor, para pedir login antes de abrir un formulario
+// y no recién al guardarlo. Sobrevive a recargar la página (sessionStorage).
+const VERIFY_TTL_MS=55*60*1000;
+
+function _sesionVigente(){
+  return !!(app.supervisor && _verifiedToken && (Date.now()-_verifiedAt)<VERIFY_TTL_MS);
+}
 
 // Corta la sesión verificada local: la usa postAction() cuando el backend
 // responde expired:true, y también sirve para "cerrar sesión".
@@ -4094,15 +4253,19 @@ function _clearVerifiedSession(){
   }catch(e){}
 }
 
+const VER_SUBTITLE_DEFAULT='Ingresá tu usuario y contraseña para continuar';
+
 function abrirVerificacion(action, context){
-  // Si ya se verificó hace menos de VERIFY_TTL_MS, no volver a pedir usuario/contraseña
-  if(app.supervisor && (Date.now()-_verifiedAt)<VERIFY_TTL_MS){
+  // Con la sesión todavía vigente no se vuelve a pedir usuario/contraseña
+  if(_sesionVigente()){
     _pendingVerOp={action, context};
     ejecutarOpPendiente(app.supervisor);
     return;
   }
   _pendingVerOp={action, context};
   const ver=document.getElementById('modal-verificar');
+  document.getElementById('ver-subtitle').textContent=
+    action==='relogin' ? 'Tu sesión venció. Ingresá de nuevo y lo que estabas guardando se envía solo.' : VER_SUBTITLE_DEFAULT;
   document.getElementById('ver-user').value=(app.supervisor&&app.supervisor.username)||'';
   document.getElementById('ver-pwd').value='';
   document.getElementById('ver-err').style.display='none';
@@ -4162,16 +4325,41 @@ async function verificarYProceder(){
   }
 }
 
+// Re-login pedido por postAction() cuando una escritura encuentra la sesión
+// vencida. Devuelve una promesa que resuelve true (login OK) o false (el
+// usuario canceló). Si varias escrituras vencen a la vez (ej. nota + fotos),
+// comparten un único modal de login.
+let _reloginPromise=null, _reloginResolve=null;
+function pedirRelogin(){
+  if(_reloginPromise) return _reloginPromise;
+  _clearVerifiedSession();
+  _reloginPromise=new Promise(res=>{ _reloginResolve=res; });
+  abrirVerificacion('relogin', null);
+  return _reloginPromise;
+}
+function _resolverRelogin(ok){
+  const res=_reloginResolve;
+  _reloginPromise=null; _reloginResolve=null;
+  if(res) res(ok);
+}
+function cancelarVerificacion(){
+  document.getElementById('modal-verificar').style.display='none';
+  _pendingVerOp=null;
+  _resolverRelogin(false);
+}
+
 function ejecutarOpPendiente(supervisor, token){
   if(!_pendingVerOp) return;
   const {action,context}=_pendingVerOp;
   _pendingVerOp=null;
   _currentOpSupervisor=supervisor;
-  _verifiedAt=Date.now();
-  sessionStorage.setItem('arr_verified_at', String(_verifiedAt));
+  // El reloj arranca SOLO cuando hay un login real (llega un token nuevo):
+  // reusar la sesión vigente no lo renueva, igual que el token del servidor.
   if(token!==undefined){
     _verifiedToken=token;
+    _verifiedAt=Date.now();
     sessionStorage.setItem('arr_verified_token', token);
+    sessionStorage.setItem('arr_verified_at', String(_verifiedAt));
   }
   // Actualizar perfil del supervisor activo
   app.supervisor=supervisor;
@@ -4186,11 +4374,14 @@ function ejecutarOpPendiente(supervisor, token){
     // aparezcan sin esperar al próximo refresh de datos.
     if(app.raw && app.raw.length){ renderTable(); if(app.detLocal) applyDetailPeriod(app.detPeriodDays); }
   }
+  // Cualquier login exitoso destraba las escrituras que esperaban re-login
+  if(token!==undefined) _resolverRelogin(true);
   if(action==='config'||action==='identificar'){
     abrirConfigModal(supervisor);
     return;
   }
   if(action==='cargarVisita') openCargarVisita(context);
+  else if(action==='editarVisita') editVisita(context.local, context.fecha, true);
   else if(action==='editarLocalData') openEditLocalDataModal(context);
   else if(action==='generarReporte') generateReport(context);
 }
@@ -4275,6 +4466,7 @@ function qtyInsert(id, ch){
   const end=inp.selectionEnd ?? inp.value.length;
   inp.value=inp.value.slice(0,start)+ch+inp.value.slice(end);
   VF_QTY[id]=inp.value;
+  scheduleVFDraftSave();
   inp.focus();
   const pos=start+ch.length;
   inp.setSelectionRange(pos,pos);
@@ -4301,6 +4493,7 @@ function setProductSN(col, val){
   } else if(VF[col].sn==='no'){
     noBtn.style.cssText='min-width:46px;padding:5px 10px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #dc2626;background:#fef2f2;color:#dc2626';
   }
+  scheduleVFDraftSave();
 }
 
 async function submitVisita(){
@@ -4351,6 +4544,8 @@ async function submitVisita(){
       showToast('No se pudo guardar la visita: '+(d.error||'error desconocido'), 'error');
       return;
     }
+    // Guardado confirmado por el backend: recién ahora se borra el borrador
+    if(!isEdit){ _vfDraftPaused=true; clearVFDraft(); }
 
     if(isEdit){
       // Actualizar la fila existente en vez de agregar una nueva
