@@ -37,12 +37,43 @@ function _getSupervisorRaw(username) {
   try { return JSON.parse(val); } catch (_) { return null; }
 }
 
-// Valida usuario/contraseña y devuelve el registro del supervisor (o null).
+// ── Límite de intentos de login ──────────────────────────────
+// 5 fallos por usuario en 15 min. El contador vive en CacheService y la clave
+// normaliza el usuario (trim + minúsculas) para que no se esquive cambiando
+// mayúsculas. Corre también para usuarios que NO existen: si solo contara los
+// existentes, el bloqueo delataría cuáles son. Cada fallo renueva la ventana.
+// Limitación conocida: al ser por usuario, alguien puede bloquear a un
+// supervisor a propósito durante 15 min (riesgo aceptado; Apps Script no
+// expone la IP del que llama, así que no hay con qué acotarlo mejor).
+const _LOGIN_MAX_INTENTOS = 5;
+const _LOGIN_VENTANA_SEGUNDOS = 15 * 60;
+// Mensaje ÚNICO para usuario inexistente y contraseña incorrecta: distinguirlos
+// permitía descubrir qué usuarios existen probando nombres.
+const _LOGIN_ERROR = 'Usuario o contraseña incorrectos';
+const _LOGIN_BLOQUEADO = 'Demasiados intentos. Probá de nuevo en 15 minutos';
+
+function _loginIntentosKey(username) {
+  return 'login|' + String(username || '').trim().toLowerCase();
+}
+
+// Valida usuario/contraseña. Devuelve { sup } si son correctas, o { error }
+// (con bloqueado:true si se agotaron los intentos). Es el ÚNICO lugar del
+// script donde se compara una contraseña.
 function _authSupervisor(username, password) {
+  const cache = CacheService.getScriptCache();
+  const key = _loginIntentosKey(username);
+  const intentos = Number(cache.get(key) || 0);
+  if (intentos >= _LOGIN_MAX_INTENTOS) {
+    // Ni siquiera se evalúa la contraseña mientras dure el bloqueo.
+    return { error: _LOGIN_BLOQUEADO, bloqueado: true };
+  }
   const sup = _getSupervisorRaw(username);
-  if (!sup) return null;
-  if (String(sup.password) !== String(password)) return null;
-  return sup;
+  if (!sup || String(sup.password) !== String(password)) {
+    cache.put(key, String(intentos + 1), _LOGIN_VENTANA_SEGUNDOS);
+    return { error: _LOGIN_ERROR };
+  }
+  cache.remove(key); // un login exitoso limpia el contador
+  return { sup: sup };
 }
 
 // ── Tokens de sesión ─────────────────────────────────────────
@@ -538,11 +569,9 @@ function doPost(e) {
     // en vez de la contraseña real.
     if (data.action === 'login') {
       const username = data.u || data.username || '';
-      const sup = _authSupervisor(username, data.p || data.password || '');
-      if (!sup) {
-        const exists = _getSupervisorRaw(username);
-        return _ok({ ok: false, error: exists ? 'Contraseña incorrecta' : 'Usuario no encontrado' });
-      }
+      const auth = _authSupervisor(username, data.p || data.password || '');
+      if (auth.error) return _ok({ ok: false, error: auth.error });
+      const sup = auth.sup;
       return _ok({
         ok: true,
         token: _issueToken(username, sup),
