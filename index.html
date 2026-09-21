@@ -1403,25 +1403,20 @@ async function crearSpreadsheetSupervisor(){
   const nombre=document.getElementById('ns-nombre').value.trim()||'Supervisor';
   const msgEl=document.getElementById('ns-spreadsheet-msg');
   if(!app.cfg.scriptUrl){ msgEl.textContent='Falta URL del Apps Script.'; msgEl.style.color='#dc2626'; return; }
-  // Única escritura que no pasa por postAction() (va por GET para poder leer
-  // la respuesta): el backend contesta "No autorizado" sin avisar expired, así
-  // que acá el vencimiento se ataja con el reloj local antes de mandar nada.
-  if(!_sesionVigente()) await pedirRelogin();
-  const auth=_authFields();
-  if(!auth.username||!auth.token){ msgEl.textContent='Identificate como admin primero.'; msgEl.style.color='#dc2626'; return; }
   msgEl.textContent='Creando spreadsheet…'; msgEl.style.color='var(--muted)';
-  try{
-    const url=`${app.cfg.scriptUrl}?action=createSupervisorSheet&u=${encodeURIComponent(auth.username)}&token=${encodeURIComponent(auth.token)}&nombre=${encodeURIComponent(nombre)}`;
-    const r=await fetch(url,{redirect:'follow'});
-    const d=await r.json();
-    if(d.ok){
-      document.getElementById('ns-spreadsheet').value=d.url;
-      msgEl.textContent='¡Listo! Spreadsheet creado y enlazado.'; msgEl.style.color='#16a34a';
-    } else {
-      msgEl.textContent=d.error||'No se pudo crear.'; msgEl.style.color='#dc2626';
-    }
-  } catch(e){
-    msgEl.textContent='Error de conexión.'; msgEl.style.color='#dc2626';
+  // Antes iba por GET (con el token en la URL) y era la única escritura que no
+  // pasaba por postAction, así que necesitaba su propio chequeo de sesión.
+  // Ahora es POST como el resto: postAction se encarga del re-login y del
+  // reintento. Sin reintentos de red a propósito (retries=0): crea un
+  // spreadsheet nuevo en cada ejecución, así que reenviarlo a ciegas dejaría
+  // dos. El reintento tras re-login sí es seguro, porque un pedido rechazado
+  // por sesión vencida no llegó a crear nada.
+  const d=await postAction({action:'createSupervisorSheet', nombre, ..._authFields()});
+  if(d.ok){
+    document.getElementById('ns-spreadsheet').value=d.url;
+    msgEl.textContent='¡Listo! Spreadsheet creado y enlazado.'; msgEl.style.color='#16a34a';
+  } else {
+    msgEl.textContent=d.error||'No se pudo crear.'; msgEl.style.color='#dc2626';
   }
 }
 
