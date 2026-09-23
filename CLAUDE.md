@@ -8,8 +8,9 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
 - **`index.html`** — la app entera: HTML + CSS + JS vanilla, sin framework ni
   build. Librerías por CDN (Tailwind play-CDN, Chart.js 4, PapaParse, marked,
   DOMPurify, SheetJS). Se hostea en GitHub Pages.
-- **`apps-script.js`** — Google Apps Script (un solo proyecto, un solo
-  deployment `/exec`). Es la API: lee/escribe el Google Sheet de cada
+- **`apps-script.js`** — Google Apps Script (un solo proyecto; el deployment
+  `/exec` vigente es el que termina en `…ScQRFDXiF1w`, el que apunta
+  `DEFAULT_SCRIPT_URL`). Es la API: lee/escribe el Google Sheet de cada
   supervisor por `spreadsheetId`, guarda notas / fotos / datos de local en
   Script Properties, sube fotos a Drive y hace de proxy a la API de Anthropic
   (la API key vive en Script Properties, nunca en el navegador).
@@ -95,6 +96,13 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
   que filtran por "tiene datos" (`productStats`, el gráfico de producto, la
   tabla del detalle) no lo necesitan. Si la celda ya tiene un dato, el producto
   cuenta igual aunque la visita sea anterior al alta.
+  **Estado en producción**: la Burratina (`Burratina AR`, alta 21/09/2026) está
+  viva desde el 23/09/2026 en la columna Q de las dos hojas (artucastro —que es
+  además la plantilla— y Gonza), con el histórico vacío. Verificado contra el
+  `/exec` real sobre 834 visitas: aparece última en Arrivata en Cargar Visita,
+  no cuenta como faltante en las 828 visitas previas al alta (denominador 12
+  antes del 21/09, 13 desde), siguen los 13 locales "Completo" y la única
+  alerta de quiebre, y ninguna columna de FES/WA/CUI/CARRE se corrió.
   **Procedimiento para el próximo producto**: 1) agregar la línea a
   `PRODUCTO_ALTA`, 2) pushear el front, 3) recién después agregar la columna a
   cada sheet de supervisor Y a la plantilla. Ese orden importa: con la columna
@@ -147,6 +155,15 @@ Arrivata (lácteos gourmet) en góndola de supermercados argentinos.
 
 ## Deuda técnica conocida
 
+- **Hay un segundo deployment `/exec` vivo del mismo proyecto**, el que termina
+  en `…HW0ahS43L43Swg`, sobrante de un redeploy anterior
+  (ver la maña de las URLs que cambian al redeployar). Nadie lo usa —
+  `DEFAULT_SCRIPT_URL` apunta al `…ScQRFDXiF1w`— pero mientras siga activo
+  expone las mismas lecturas sin token que el vigente, y un redeploy
+  equivocado sobre él haría que los cambios "no aparezcan". **Pendiente:
+  archivarlo** desde el proyecto (Implementaciones → Administrar
+  implementaciones → Archivar). Antes de archivarlo conviene confirmar que
+  ningún favorito ni ninguna copia vieja del front lo esté usando.
 - El gate de acceso al dashboard (contraseña compartida "Arrivata123") sigue
   siendo una clave única hardcodeada en el HTML público, visible para
   cualquiera que inspeccione el código fuente. Es una decisión de producto
