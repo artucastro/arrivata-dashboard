@@ -262,11 +262,24 @@ Detalles que importan:
   - **Por qué `callClaude` y `savePhoto` tienen timeout propio**: un informe de
     hasta 12.000 tokens o una subida de fotos desde el celular pasan de 40 s
     aun saliendo bien; con el timeout general fallarían siempre.
-  - Scripts de medición (solo metadatos, nunca datos): `medir-exec.js`
-    (sigue la cadena de redirects salto por salto) y `resumir.js`, en el
-    scratchpad de la sesión del 29/09/2026:
-    `%TEMP%\claude\c--Users-usuario-OneDrive---Claudia-Montes-de-Oca-Escritorio-arrivata-dashboard\fc16eeac-a82a-4a3b-aac3-0ab8e79a7d54\scratchpad\`.
-    Es una carpeta temporal: si se van a reusar, conviene pasarlos al repo.
+  - **Rebote del echo en un POST**: cuando el echo no tiene listo el
+    resultado, redirige a la URL original. En un POST esa URL es el `/exec`
+    sin parámetros; el navegador la sigue por GET y `doGet` sin `action`
+    responde **`OK` en texto plano** (200, `text/plain`), sin error en el
+    panel de Ejecuciones y con el resultado del POST perdido aunque se haya
+    ejecutado. Así falló el `gateLogin` correcto el 30/09/2026 ("respuesta
+    ilegible"). Por eso `_fetchExecUnaVez` trata como transporte el `OK`
+    pelado, el cuerpo vacío y el JSON ilegible. Pasa en ~1 de cada 20 POST.
+  - **`callClaude` no reintenta ante transporte, en ningún nivel**: ni
+    `fetchExec` (política `ia`) ni el bucle de `callAnthropic`, y la etapa 1
+    de los informes no cae a su informe alternativo. Cada POST es una llamada
+    paga a Anthropic que suele haberse hecho igual. Sí reintentan los errores
+    de la API que no son permanentes y la respuesta 200 sin texto.
+  - Scripts de medición en **`tools/`** (solo metadatos, nunca datos; la
+    salida `tools/*.jsonl` está en `.gitignore`): `medir-exec.js` sigue la
+    cadena de redirects salto por salto, `resumir.js` saca los porcentajes y
+    latencias, y `probar-post.js` manda POST inofensivos para cazar el rebote.
+    Instrucciones de uso en el encabezado de cada uno.
 - **Borrador de visita nueva**: `localStorage`, clave
   `arr_visita_draft|<username>`, autoguardado con debounce de 500 ms. Guarda
   texto, SI/NO, cantidades y el `clientId` del intento (para que el backend

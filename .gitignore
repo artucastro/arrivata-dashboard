@@ -6,3 +6,6 @@ Arrivata/
 *.xlsx
 *.pdf
 .DS_Store
+# Salida cruda de los scripts de medición (tools/): nunca al repo
+tools/*.jsonl
+tools/*.out
