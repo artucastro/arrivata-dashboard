@@ -252,7 +252,7 @@ Detalles que importan:
     | `login`, `gateLogin` | 1, solo por transporte | error de conexión |
     | `saveNota`, `updateVisita`, admin | 0 | "No pudimos confirmar si se guardó. Revisá antes de volver a intentarlo." |
     | `savePhoto` | 0, timeout 3 min | ídem, y relee las fotos |
-    | `callClaude` | 0 acá (`callAnthropic` tiene su bucle), timeout 6 min | error del informe |
+    | `callClaude` | 0 por transporte; 1 por error de API (a 3 s) y 1 por 200 sin texto (pago), timeout 6 min | error del informe |
 
   - **Por qué las escrituras casi no reintentan**: el 404 del echo puede llegar
     **después** de que el script escribió. Reintentar a ciegas `savePhoto`
@@ -273,8 +273,12 @@ Detalles que importan:
   - **`callClaude` no reintenta ante transporte, en ningún nivel**: ni
     `fetchExec` (política `ia`) ni el bucle de `callAnthropic`, y la etapa 1
     de los informes no cae a su informe alternativo. Cada POST es una llamada
-    paga a Anthropic que suele haberse hecho igual. Sí reintentan los errores
-    de la API que no son permanentes y la respuesta 200 sin texto.
+    paga a Anthropic que suele haberse hecho igual. Otros reintentos, **como
+    máximo 1 cada uno** y con contador propio: error de la API no permanente
+    (529, 429, 5xx) a los 3 s, porque las respuestas de error no generan
+    tokens; y 200 sin texto usable, que **sí es pago** y deja un
+    `console.warn` con "reintento pago" para notar si empieza a pasar seguido.
+    Si la facturación mostrara cobros por errores, revisar el primero.
   - Scripts de medición en **`tools/`** (solo metadatos, nunca datos; la
     salida `tools/*.jsonl` está en `.gitignore`): `medir-exec.js` sigue la
     cadena de redirects salto por salto, `resumir.js` saca los porcentajes y

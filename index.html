@@ -3163,13 +3163,20 @@ function _errorApiEsPermanente(msg){
 // respuestas vacías, cortes de red o errores transitorios de la API: Apps
 // Script entrega a veces una respuesta trunca en el salto de redirect, y ese
 // era el motivo habitual del error "Sin respuesta en etapa 1".
+// Cada POST a callClaude puede ser una llamada paga. Reintentos, a lo sumo:
+//  - transporte: 0 (ver abajo);
+//  - error de la API no permanente (sobrecarga 529, 429, 5xx…): 1, a los
+//    3 s. Las respuestas de error no generan tokens, no deberían cobrarse;
+//  - 200 sin texto usable: 1, y es PAGO: se avisa con console.warn para que
+//    se note si empieza a pasar seguido.
+// Cada caso lleva su contador, así que el peor caso son 3 POST (error de API,
+// reintento que vuelve sin texto, reintento) y solo 2 de ellos generan tokens.
+const IA_ESPERA_ERROR_API_MS=3000;
 async function callAnthropic(prompt, maxTok, fileBlocks=[]){
   const content=[...fileBlocks,{type:'text',text:prompt}];
-  let last=null;
-  for(let intento=0; intento<3; intento++){
-    if(intento) await new Promise(res=>setTimeout(res, 900*intento));
+  let reintentosApi=0, reintentosSinTexto=0;
+  for(;;){
     const d=await postAction({action:'callClaude', maxTokens:maxTok, content, ..._authFields()}, 'ia');
-    last=d;
     if(d && d.transporte){
       // NO se reintenta: una falla de transporte (rebote del echo, 404, HTML,
       // red) suele llegar DESPUÉS de que el script ya llamó a Anthropic, así
@@ -3181,13 +3188,19 @@ async function callAnthropic(prompt, maxTok, fileBlocks=[]){
     }
     if(d && d.ok===false){
       if(d.expired || _errorApiEsPermanente(d.error)) throw new Error(d.error||'Error de API');
-      continue; // error transitorio → reintentar
+      // Error transitorio de la API → UN reintento, dando tiempo a que baje la carga.
+      if(reintentosApi>=1) throw new Error(d.error||'Error de API');
+      reintentosApi++;
+      await _esperar(IA_ESPERA_ERROR_API_MS);
+      continue;
     }
     if(extractReportText(d)) return d;              // respuesta con texto
     if(d && d.stop_reason==='max_tokens') return d; // texto parcial: lo usa el caller
-    // HTTP 200 sin texto usable (corte de Apps Script, refusal, etc.) → reintentar
+    // HTTP 200 sin texto usable (refusal, respuesta vacía…) → UN reintento, pago.
+    if(reintentosSinTexto>=1) throw new Error('La IA no devolvió texto'+_reportWhy(d));
+    reintentosSinTexto++;
+    console.warn('[callClaude] reintento pago: la IA respondió 200 sin texto usable'+_reportWhy(d));
   }
-  throw new Error('La IA no devolvió texto'+_reportWhy(last));
 }
 
 // ── Professional report helpers ───────────────────────────────
