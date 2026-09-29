@@ -56,6 +56,270 @@ function _loginIntentosKey(username) {
   return 'login|' + String(username || '').trim().toLowerCase();
 }
 
+// ── Hash de contraseñas ──────────────────────────────────────
+// Apps Script no expone bcrypt/scrypt/argon2 ni un PBKDF2 propio, así que se
+// itera HMAC-SHA256 (el núcleo de PBKDF2) con salt por usuario. Se hace así y
+// no encadenando SHA-256 a mano porque es la construcción estándar, se puede
+// nombrar con precisión y reinyecta la contraseña como clave en cada vuelta.
+//
+// Qué compra y qué NO, sin vueltas:
+// - Compra: no hay texto plano guardado, así que una captura de la pantalla de
+//   propiedades, un export o un contratista con acceso temporal no entrega
+//   contraseñas que los supervisores casi seguro reusan en otro lado. El salt
+//   por usuario mata las rainbow tables y evita que se vea de un vistazo que
+//   dos supervisores comparten contraseña.
+// - NO compra dureza de memoria. SHA-256 es lo más amigable que hay para una
+//   GPU. La guía actual de OWASP para PBKDF2-SHA256 son 600.000 iteraciones,
+//   que acá serían más de 10 s por login: inalcanzable. Estamos muy por debajo
+//   de esa recomendación, y es el techo de la plataforma, no una elección.
+// - Contra alguien que YA puede leer Script Properties esto es casi inútil para
+//   proteger el sistema: esa misma persona lee GATE_PASSWORD y la
+//   ANTHROPIC_API_KEY, y como leer implica escribir, puede crearse un
+//   supervisor admin con un hash calculado por ella. Que nadie lea esto como
+//   "las contraseñas ya están a salvo": no lo están, y subir N no lo arregla.
+// `passwordAlgo` queda guardado en cada registro para poder subir el costo más
+// adelante y re-hashear solo, con el mismo mecanismo perezoso de la migración.
+//
+// Por qué SHA-256 en JS puro y no Utilities (medido en el runtime real, 29/09/2026):
+// - Velocidad: Utilities.computeHmacSha256Signature + base64Encode costaban
+//   1–5 ms POR ITERACIÓN (cada llamada cruza de V8 al lado Java); 10.000
+//   vueltas eran 10–40 s por login. En JS puro son ~0,0065 ms por vuelta.
+// - Corrección: computeHmacSha256Signature(string, string) SIN charset
+//   convierte todo carácter no ASCII en '?', así que "contraseña" y
+//   "contrase?a" (y "contraseüa") daban el mismo hash. Con Charset.UTF_8 o
+//   con bytes UTF-8 coincide con esta implementación. Cualquier llamada nueva
+//   a Utilities que reciba texto de usuario tiene que pasar Charset.UTF_8.
+// Cuando se cambió de construcción había 0 registros hasheados
+// (_contarHashesGuardados), así que no hizo falta una ruta legacy.
+// OJO con _PASS_ITER: medirlo en el editor con _benchHash() antes de
+// deployar; la idea es ~200–300 ms por login en la corrida más lenta.
+const _PASS_ALGO = 'hmac-sha256-utf8-js';
+const _PASS_ITER = 30000;
+
+function _randomSalt() {
+  return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+}
+
+// acc = salt; N veces acc = base64(HMAC-SHA256(mensaje = acc, clave = password)),
+// con la contraseña en UTF-8. Todo en JS: ver arriba por qué no Utilities.
+function _hashPassword(password, salt, iter) {
+  const n = iter || _PASS_ITER;
+  const prep = _hmacSha256Prep(_utf8Bytes(String(password)));
+  let acc = String(salt);
+  for (let i = 0; i < n; i++) {
+    acc = _base64Js(_hmacSha256Js(prep, _utf8Bytes(acc)));
+  }
+  return acc;
+}
+
+// Correr a mano en el editor (Ejecutar → _benchHash) para elegir _PASS_ITER.
+// No es un endpoint: no consume cuota del /exec y se puede repetir. El login
+// paga este costo UNA vez; ninguna lectura hashea nunca. La primera línea
+// compara en vivo contra Utilities con Charset.UTF_8 (iter=1, clave con ñ y
+// tildes). Solo loguea tiempos y el resultado de esa comparación.
+function _benchHash() {
+  const clave = 'contraseñaDePrueba áéíóú', salt = _randomSalt();
+  const ref = Utilities.base64Encode(
+    Utilities.computeHmacSha256Signature(salt, clave, Utilities.Charset.UTF_8));
+  Logger.log(_hashPassword(clave, salt, 1) === ref ? 'equivalencia OK' : 'equivalencia FALLA');
+  [20000, 30000, 40000].forEach(function (n) {
+    const t0 = Date.now();
+    _hashPassword('contraseñaDePrueba123', _randomSalt(), n);
+    const ms = Date.now() - t0;
+    Logger.log(n + ' iteraciones → ' + ms + ' ms (' + (ms / n).toFixed(4) + ' ms/iter)');
+  });
+}
+
+// ── SHA-256 / HMAC en JS puro ────────────────────────────────────────────────
+// Lo usa _hashPassword. Verificado contra vectores conocidos y contra
+// Utilities + Charset.UTF_8 en el runtime real.
+const _SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+].map(function (k) { return k | 0; });
+const _SHA256_IV = [
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+].map(function (k) { return k | 0; });
+
+// Procesa un bloque de 64 bytes de `m` desde `off` sobre el estado `st` (8
+// enteros de 32 bits, se modifica en el lugar). `W` es un buffer de 64 que se
+// reusa entre bloques para no alocar.
+function _sha256Bloque(st, m, off, W) {
+  for (let i = 0; i < 16; i++) {
+    const j = off + i * 4;
+    W[i] = ((m[j] & 255) << 24) | ((m[j + 1] & 255) << 16) | ((m[j + 2] & 255) << 8) | (m[j + 3] & 255);
+  }
+  for (let i = 16; i < 64; i++) {
+    const w15 = W[i - 15], w2 = W[i - 2];
+    const s0 = ((w15 >>> 7) | (w15 << 25)) ^ ((w15 >>> 18) | (w15 << 14)) ^ (w15 >>> 3);
+    const s1 = ((w2 >>> 17) | (w2 << 15)) ^ ((w2 >>> 19) | (w2 << 13)) ^ (w2 >>> 10);
+    W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+  }
+  let a = st[0], b = st[1], c = st[2], d = st[3], e = st[4], f = st[5], g = st[6], h = st[7];
+  for (let i = 0; i < 64; i++) {
+    const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+    const t1 = (h + S1 + ((e & f) ^ (~e & g)) + _SHA256_K[i] + W[i]) | 0;
+    const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+    const t2 = (S0 + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+    h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+  }
+  st[0] = (st[0] + a) | 0; st[1] = (st[1] + b) | 0; st[2] = (st[2] + c) | 0; st[3] = (st[3] + d) | 0;
+  st[4] = (st[4] + e) | 0; st[5] = (st[5] + f) | 0; st[6] = (st[6] + g) | 0; st[7] = (st[7] + h) | 0;
+}
+
+// Termina un SHA-256 partiendo del estado `st0`, que ya absorbió `prefijo`
+// bytes (0 para un hash desde cero, 64 para la mitad de un HMAC). Devuelve el
+// estado final; no toca `st0`.
+function _sha256Desde(st0, m, prefijo) {
+  const st = st0.slice();
+  const W = new Array(64);
+  const n = m.length;
+  const enteros = n - (n % 64);
+  for (let off = 0; off < enteros; off += 64) _sha256Bloque(st, m, off, W);
+  const resto = n - enteros;
+  const cola = new Array(resto < 56 ? 64 : 128).fill(0);
+  for (let i = 0; i < resto; i++) cola[i] = m[enteros + i];
+  cola[resto] = 0x80;
+  const bits = (prefijo + n) * 8;
+  const alto = Math.floor(bits / 0x100000000), bajo = bits >>> 0;
+  const L = cola.length;
+  cola[L - 8] = alto >>> 24; cola[L - 7] = (alto >>> 16) & 255; cola[L - 6] = (alto >>> 8) & 255; cola[L - 5] = alto & 255;
+  cola[L - 4] = bajo >>> 24; cola[L - 3] = (bajo >>> 16) & 255; cola[L - 2] = (bajo >>> 8) & 255; cola[L - 1] = bajo & 255;
+  for (let off = 0; off < L; off += 64) _sha256Bloque(st, cola, off, W);
+  return st;
+}
+
+// Estado → 32 bytes CON SIGNO (-128..127), el formato de Utilities.computeDigest.
+function _sha256EstadoABytes(st) {
+  const out = new Array(32);
+  for (let i = 0; i < 8; i++) {
+    const w = st[i];
+    out[i * 4] = w >> 24;
+    out[i * 4 + 1] = (w << 8) >> 24;
+    out[i * 4 + 2] = (w << 16) >> 24;
+    out[i * 4 + 3] = (w << 24) >> 24;
+  }
+  return out;
+}
+
+// SHA-256 de un array de bytes (con o sin signo). Devuelve bytes con signo.
+function _sha256Bytes(bytes) {
+  return _sha256EstadoABytes(_sha256Desde(_SHA256_IV, bytes, 0));
+}
+
+// String → bytes UTF-8, como hace Utilities con un argumento string. Un
+// surrogate suelto va como '?' (0x3F), que es lo que hace Java; en la práctica
+// una contraseña tipeada nunca trae uno.
+function _utf8Bytes(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+      const c2 = s.charCodeAt(i + 1);
+      if (c2 >= 0xdc00 && c2 <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00); i++; }
+    }
+    if (c < 0x80) out.push(c);
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    else if (c >= 0xd800 && c <= 0xdfff) out.push(0x3f);
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+  }
+  return out;
+}
+
+const _B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+// Base64 estándar con padding, igual que Utilities.base64Encode.
+function _base64Js(bytes) {
+  let s = '';
+  const n = bytes.length;
+  for (let i = 0; i < n; i += 3) {
+    const b0 = bytes[i] & 255, b1 = i + 1 < n ? bytes[i + 1] & 255 : 0, b2 = i + 2 < n ? bytes[i + 2] & 255 : 0;
+    s += _B64[b0 >> 2] + _B64[((b0 & 3) << 4) | (b1 >> 4)] +
+      (i + 1 < n ? _B64[((b1 & 15) << 2) | (b2 >> 6)] : '=') +
+      (i + 2 < n ? _B64[b2 & 63] : '=');
+  }
+  return s;
+}
+
+// HMAC-SHA256 con la clave pre-absorbida: los bloques ipad/opad dependen solo
+// de la clave (la contraseña, fija durante todo el loop), así que se calculan
+// UNA vez. Cada vuelta queda en 2 bloques de compresión. Mismo resultado que
+// el HMAC de libro: es solo no repetir trabajo.
+function _hmacSha256Prep(clave) {
+  let k = clave.length > 64 ? _sha256Bytes(clave) : clave;
+  const ipad = new Array(64), opad = new Array(64);
+  for (let i = 0; i < 64; i++) {
+    const b = i < k.length ? k[i] & 255 : 0;
+    ipad[i] = b ^ 0x36; opad[i] = b ^ 0x5c;
+  }
+  const W = new Array(64);
+  const adentro = _SHA256_IV.slice(), afuera = _SHA256_IV.slice();
+  _sha256Bloque(adentro, ipad, 0, W);
+  _sha256Bloque(afuera, opad, 0, W);
+  return { adentro: adentro, afuera: afuera };
+}
+function _hmacSha256Js(prep, mensaje) {
+  const interno = _sha256EstadoABytes(_sha256Desde(prep.adentro, mensaje, 64));
+  return _sha256EstadoABytes(_sha256Desde(prep.afuera, interno, 64));
+}
+
+// Cuántos registros ya tienen contraseña hasheada. Solo cantidades y sí/no,
+// ningún valor. Correr a mano en el editor: sirve para seguir la migración
+// perezosa (cada supervisor pasa a hasheado en su primer login) y para saber,
+// antes de cambiar la construcción del hash, si hay algo guardado que romper.
+function _contarHashesGuardados() {
+  const todas = _props().getProperties();
+  let sups = 0, conHash = 0, conSalt = 0, conIter = 0, enPlano = 0, ilegibles = 0;
+  Object.keys(todas).forEach(function (k) {
+    if (k.indexOf('supervisor|') !== 0) return;
+    sups++;
+    let s;
+    try { s = JSON.parse(todas[k]); } catch (e) { ilegibles++; return; }
+    if (!s || typeof s !== 'object') { ilegibles++; return; }
+    if (s.passwordHash) conHash++;
+    if (s.passwordSalt) conSalt++;
+    if (s.passwordIter) conIter++;
+    if (typeof s.password === 'string') enPlano++;
+  });
+  Logger.log('supervisores: ' + sups);
+  Logger.log('con passwordHash: ' + conHash + ' · con passwordSalt: ' + conSalt + ' · con passwordIter: ' + conIter);
+  Logger.log('con password en texto plano: ' + enPlano + ' · ilegibles: ' + ilegibles);
+  const gate = todas.GATE_PASSWORD;
+  let gateHasheado = false;
+  try { const g = JSON.parse(gate); gateHasheado = !!(g && typeof g === 'object' && (g.passwordHash || g.passwordSalt)); } catch (e) {}
+  Logger.log('GATE_PASSWORD configurada: ' + !!gate + ' · con forma de hash: ' + gateHasheado);
+}
+
+// Comparación en tiempo constante: evita filtrar cuántos caracteres del hash
+// coincidieron. Con hashes de largo fijo es barato hacerlo bien.
+function _igualSeguro(a, b) {
+  const sa = String(a || ''), sb = String(b || '');
+  if (sa.length !== sb.length) return false;
+  let dif = 0;
+  for (let i = 0; i < sa.length; i++) dif |= (sa.charCodeAt(i) ^ sb.charCodeAt(i));
+  return dif === 0;
+}
+
+// Devuelve el registro con la contraseña ya hasheada. Se usa tanto al crear un
+// supervisor como al migrar uno viejo.
+function _conPasswordHasheada(sup, password) {
+  const salt = _randomSalt();
+  const copia = {};
+  Object.keys(sup || {}).forEach(function (k) { copia[k] = sup[k]; });
+  delete copia.password; // el texto plano no sobrevive a la migración
+  copia.passwordAlgo = _PASS_ALGO;
+  copia.passwordSalt = salt;
+  copia.passwordIter = _PASS_ITER;
+  copia.passwordHash = _hashPassword(password, salt, _PASS_ITER);
+  return copia;
+}
+
 // Valida usuario/contraseña. Devuelve { sup } si son correctas, o { error }
 // (con bloqueado:true si se agotaron los intentos). Es el ÚNICO lugar del
 // script donde se compara una contraseña.
@@ -68,12 +332,42 @@ function _authSupervisor(username, password) {
     return { error: _LOGIN_BLOQUEADO, bloqueado: true };
   }
   const sup = _getSupervisorRaw(username);
-  if (!sup || String(sup.password) !== String(password)) {
+  if (!sup || !_passwordCorrecta(sup, password)) {
     cache.put(key, String(intentos + 1), _LOGIN_VENTANA_SEGUNDOS);
     return { error: _LOGIN_ERROR };
   }
   cache.remove(key); // un login exitoso limpia el contador
-  return { sup: sup };
+  // Migración perezosa: si el registro todavía estaba en texto plano, este
+  // login acertado es el momento de hashearlo. Nadie queda afuera por la
+  // migración y no hace falta un script de conversión aparte.
+  const migrado = _migrarPasswordSiHaceFalta(username, sup, password);
+  return { sup: migrado || sup };
+}
+
+// Valida la contraseña contra el registro, acepte éste el formato nuevo
+// (passwordHash + passwordSalt) o el viejo (password en texto plano).
+// Mantener la rama vieja es lo que permite la migración perezosa y, de paso,
+// es el procedimiento de reset: se borra el hash, se escribe `password` en
+// plano y el próximo login lo vuelve a hashear.
+function _passwordCorrecta(sup, password) {
+  if (sup.passwordHash) {
+    return _igualSeguro(sup.passwordHash, _hashPassword(password, sup.passwordSalt, sup.passwordIter));
+  }
+  if (typeof sup.password === 'string') {
+    return String(sup.password) === String(password);
+  }
+  return false;
+}
+
+function _migrarPasswordSiHaceFalta(username, sup, password) {
+  if (sup.passwordHash) return null; // ya estaba migrado
+  try {
+    const hasheado = _conPasswordHasheada(sup, password);
+    _props().setProperty('supervisor|' + username, JSON.stringify(hasheado));
+    return hasheado;
+  } catch (_) {
+    return null; // si falla, el login igual es válido; se reintenta la próxima
+  }
 }
 
 // ── Tokens de sesión ─────────────────────────────────────────
@@ -91,6 +385,89 @@ function _issueToken(username, sup) {
     isAdmin: sup.isAdmin || false
   }), _TOKEN_TTL_SECONDS);
   return token;
+}
+
+// ── Gate de la página ────────────────────────────────────────
+// La contraseña compartida que da acceso de solo-lectura al panorama global
+// vivía hardcodeada en index.html, o sea a la vista de cualquiera que abriera
+// el view-source de la página publicada. Ahora vive en la Script Property
+// GATE_PASSWORD y se valida acá.
+//
+// Rotarla NO requiere redeploy: se edita la property y listo. Los tokens ya
+// emitidos siguen valiendo hasta que venzan; para matarlos en el acto se
+// incrementa GATE_EPOCH, que va embebido en cada token.
+//
+// El límite de intentos es GLOBAL, no por usuario, porque el gate no tiene
+// usuario y Apps Script no expone la IP del que llama. Por eso el umbral es
+// más alto que el del login de supervisor: con 5 globales, cualquiera que
+// fallara 5 veces dejaría afuera a todo el mundo durante 15 minutos.
+const _GATE_TOKEN_TTL = 21600; // 6 h — el máximo que admite CacheService
+const _GATE_MAX_INTENTOS = 20;
+const _GATE_VENTANA_SEGUNDOS = 15 * 60;
+const _GATE_ERROR = 'Contraseña incorrecta';
+const _GATE_BLOQUEADO = 'Demasiados intentos. Probá de nuevo en 15 minutos';
+const _GATE_EXPIRADO = 'Sesión vencida — volvé a ingresar la contraseña';
+
+function _gateEpoch() {
+  return String(_props().getProperty('GATE_EPOCH') || '1');
+}
+
+// Sube el epoch. Si el valor guardado no es un número (editado a mano, vacío),
+// cae a un timestamp: lo único que importa es que quede DISTINTO del anterior,
+// porque la comparación es por igualdad de string.
+function _subirEpoch() {
+  const actual = Number(_gateEpoch());
+  const nuevo = String(isNaN(actual) ? Date.now() : actual + 1);
+  _props().setProperty('GATE_EPOCH', nuevo);
+  return nuevo;
+}
+
+// El contador va indexado por epoch a propósito. Como el límite es global,
+// cualquiera que conozca la URL puede quemar los 20 intentos y dejar afuera a
+// todos durante 15 min. Colgándolo del epoch, subir GATE_EPOCH destraba el
+// bloqueo al instante — sin redeploy y sin esperar la ventana. Es la salida de
+// emergencia de un límite que, por no haber IP en Apps Script, no puede ser
+// más fino. La defensa real es que la contraseña sea larga y aleatoria.
+function _gateIntentosKey() {
+  return 'gatelogin|' + _gateEpoch();
+}
+
+// Valida la contraseña del gate y devuelve { token } o { error }.
+// Falla CERRADA: si GATE_PASSWORD no está configurada o está vacía, no entra
+// nadie. Nunca hay que dejar pasar por "la property todavía no existe".
+function _gateLogin(password) {
+  const cache = CacheService.getScriptCache();
+  const key = _gateIntentosKey();
+  const intentos = Number(cache.get(key) || 0);
+  if (intentos >= _GATE_MAX_INTENTOS) {
+    return { error: _GATE_BLOQUEADO, bloqueado: true };
+  }
+  const esperada = _props().getProperty('GATE_PASSWORD');
+  // Sin property configurada no entra nadie, y se dice con un mensaje distinto
+  // para no mandar al admin a buscar una contraseña mal tipeada.
+  if (!esperada) {
+    return { error: 'El acceso no está configurado. Avisale al administrador.' };
+  }
+  if (!String(password || '') || !_igualSeguro(esperada, password)) {
+    cache.put(key, String(intentos + 1), _GATE_VENTANA_SEGUNDOS);
+    return { error: _GATE_ERROR };
+  }
+  cache.remove(key);
+  const token = Utilities.getUuid();
+  cache.put('gate|' + token, JSON.stringify({ epoch: _gateEpoch() }), _GATE_TOKEN_TTL);
+  return { token: token, ttl: _GATE_TOKEN_TTL };
+}
+
+// true si el token de gate existe y su epoch sigue siendo el vigente.
+function _gateTokenValido(token) {
+  if (!token) return false;
+  const raw = CacheService.getScriptCache().get('gate|' + token);
+  if (!raw) return false;
+  try {
+    return JSON.parse(raw).epoch === _gateEpoch();
+  } catch (_) {
+    return false;
+  }
 }
 
 // Resuelve la identidad del actor de una operación de escritura: SOLO por
@@ -113,6 +490,49 @@ function _resolveToken(data) {
     }
   }
   return { error: 'Sesión vencida — volvé a iniciar sesión', expired: true };
+}
+
+// ── Auth de las LECTURAS ─────────────────────────────────────
+// Las lecturas (getVisitas, getNotas, getFotos, getLocalData, getSupervisors,
+// getLocalesBase, getFotoData) eran públicas a propósito, para que gerencia
+// viera el panorama sin perfil de supervisor. Eso significaba que cualquiera
+// con la URL del /exec se bajaba las visitas de todos. Desde 24/09/2026 piden
+// token: el del gate (gerencia) o el de supervisor (que ya pasó el gate).
+// La intención original se mantiene — gerencia sigue sin necesitar perfil —,
+// solo que ahora se autentica. Reabrir estas lecturas es una REGRESIÓN.
+//
+// El token viaja por querystring (parámetro `t`) y no por header porque
+// doGet(e) de Apps Script no puede leer headers HTTP: solo ve e.parameter.
+//
+// GATE_ENFORCE_READS es la palanca de transición y de rollback:
+//   '1'            → lectura sin token rechazada (estado final)
+//   ausente o '0'  → lectura sin token permitida (el front viejo sigue vivo
+//                    entre el redeploy y el push del front nuevo)
+// Ojo con la semántica: un token PRESENTE pero inválido se rechaza SIEMPRE,
+// incluso con la palanca en '0'. Así el front nuevo ejercita su camino de
+// re-login desde el primer día, y la palanca solo cubre al cliente viejo que
+// no manda token.
+//
+// El flag de la respuesta es `gateExpired`, NO `expired`. Son dos credenciales
+// distintas y mezclarlas rompe cosas: `expired` significa "se venció la sesión
+// de supervisor", y el front reacciona limpiándola (_postOnce) para pedir
+// login y reintentar la escritura. Si una lectura vencida devolviera `expired`,
+// un refresh de fondo le voltearía la sesión de escritura a un supervisor que
+// está en medio de una carga.
+function _resolveReadAuth(e) {
+  const tok = (e && e.parameter && e.parameter.t) || '';
+  if (tok) {
+    // Primero el de gate: es el caso común y evita mirar el cache de tokens de
+    // supervisor en cada lectura. El de supervisor es el fallback (dura 1 h
+    // contra las 6 h del de gate).
+    if (_gateTokenValido(tok)) return { ok: true };
+    if (CacheService.getScriptCache().get('token|' + tok)) return { ok: true };
+    return { error: _GATE_EXPIRADO, gateExpired: true };
+  }
+  if (String(_props().getProperty('GATE_ENFORCE_READS') || '0') === '1') {
+    return { error: _GATE_EXPIRADO, gateExpired: true };
+  }
+  return { ok: true };
 }
 
 // Admin para las escrituras (doPost). Distingue DOS casos, porque el frontend
@@ -151,17 +571,14 @@ function _contarAdmins() {
   }).length;
 }
 
-// Admin para las acciones por GET. Las cuatro herramientas manuales
-// (restyleSheet, clearVisitRows, removeFilter, getDebugLog) no las llama
-// ningún front: se invocan pegando la URL en el navegador, así que siguen
-// aceptando usuario+contraseña en el querystring — deuda conocida, ver
-// CLAUDE.md. El límite de intentos de _authSupervisor igual las cubre.
-// Ninguna acción por GET la llama el frontend (createSupervisorSheet, que era
-// la única, pasó a POST), así que solo mira el par u/p.
-function _requireAdminGet(e) {
-  const auth = _authSupervisor(e.parameter.u || '', e.parameter.p || '');
-  return (auth.sup && auth.sup.isAdmin) ? auth.sup : null;
-}
+// Las cuatro herramientas manuales (restyleSheet, clearVisitRows, removeFilter,
+// getDebugLog) aceptaban usuario+contraseña en el querystring, así que la
+// contraseña del admin terminaba en el historial del navegador y en los logs de
+// Google. Desde 24/09/2026 van por POST con token, como el resto de las
+// escrituras. Las ramas GET quedan devolviendo este mensaje en vez de
+// desaparecer, para que una URL vieja guardada en favoritos diga qué pasó en
+// lugar de fallar de una forma confusa.
+const _SOLO_POST = 'Esta herramienta ahora va por POST con token de sesión';
 
 // Resuelve a qué supervisor (dueño de spreadsheet) apunta una operación
 // de escritura, validando que quien la pide esté autorizado a hacerlo.
@@ -431,42 +848,18 @@ function doGet(e) {
     return _ok({ ok: false, error: 'El login va por POST' });
   }
 
-  // ── Aplicar el estilo visual del template a un spreadsheet ya existente ──
-  // (solo admin) — para "poner al día" spreadsheets creados antes de este cambio.
-  if (action === 'restyleSheet') {
-    if (!_requireAdminGet(e)) {
-      return _ok({ ok: false, error: 'No autorizado' });
-    }
-    const sup = _getSupervisorRaw(e.parameter.supervisor || '');
-    if (!sup || !sup.spreadsheetId) return _ok({ ok: false, error: 'Supervisor sin spreadsheet asignado' });
-    const ss = SpreadsheetApp.openById(sup.spreadsheetId);
-    const sheet = (sup.sheetName && ss.getSheetByName(sup.sheetName)) || ss.getSheets()[0];
-    const found = _findHeaderRow(sheet);
-    const numCols = found ? found.headers.length : sheet.getLastColumn();
-    _applyTemplateStyle(sheet, numCols);
-    return _ok({ ok: true });
-  }
-
-  // ── Borrar todas las filas de datos (dejando el header) de un spreadsheet ──
-  // (solo admin) — recorre TODAS las pestañas y devuelve el detalle de lo
-  // que borró en cada una, para poder verificar sin adivinar.
-  if (action === 'clearVisitRows') {
-    if (!_requireAdminGet(e)) {
-      return _ok({ ok: false, error: 'No autorizado' });
-    }
-    const spreadsheetId = e.parameter.spreadsheetId || '';
-    if (!spreadsheetId) return _ok({ ok: false, error: 'Falta spreadsheetId' });
-    const ss = SpreadsheetApp.openById(spreadsheetId);
-    const result = ss.getSheets().map(function (sh) {
-      const r = _clearDataRows(sh);
-      r.sheet = sh.getName();
-      return r;
-    });
-    return _ok({ ok: true, sheets: result });
+  // ── Herramientas manuales de admin ────────────────────────
+  // Pasaron a POST con token (ver _SOLO_POST). La rama GET queda solo para
+  // avisar, así una URL vieja no falla de forma confusa.
+  if (action === 'restyleSheet' || action === 'clearVisitRows' ||
+      action === 'removeFilter' || action === 'getDebugLog') {
+    return _ok({ ok: false, error: _SOLO_POST });
   }
 
   // ── Lista de supervisores (para el sidebar y panel admin) ──
   if (action === 'getSupervisors') {
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const all = _props().getProperties();
     const sups = [];
     Object.keys(all).forEach(function (k) {
@@ -481,6 +874,8 @@ function doGet(e) {
 
   // ── Notas ─────────────────────────────────────────────────
   if (action === 'getNotas') {
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const all = _props().getProperties();
     const notas = {};
     Object.keys(all).forEach(function (k) {
@@ -496,12 +891,13 @@ function doGet(e) {
   // se admite TextOutput/HtmlOutput), y el link público de Drive no carga
   // de forma confiable dentro de un <img> embebido.
   if (action === 'getFotoData') {
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const fileId = e.parameter.id || '';
     if (!fileId) return _ok({ ok: false, error: 'Falta id' });
-    // Este endpoint es público a propósito (gerencia ve las fotos sin login,
-    // ver CLAUDE.md), así que NO puede servir cualquier archivo de Drive que la
-    // cuenta dueña del script pueda leer: solo los que están registrados como
-    // foto de alguna visita. Si no figura, se corta acá sin tocar Drive.
+    // Aunque ahora pide token, sigue sin poder servir cualquier archivo de
+    // Drive que la cuenta dueña del script pueda leer: solo los registrados
+    // como foto de alguna visita. Si no figura, se corta acá sin tocar Drive.
     if (!_fotoIdRegistrado(fileId)) return _ok({ ok: false, error: 'Foto no encontrada' });
     try {
       const blob = DriveApp.getFileById(fileId).getBlob();
@@ -513,6 +909,8 @@ function doGet(e) {
 
   // ── Fotos de un local (?local=X) o de TODOS los locales (sin local) ──
   if (action === 'getFotos') {
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const local = e.parameter.local || '';
     const all = _props().getProperties();
     if (local) {
@@ -549,6 +947,11 @@ function doGet(e) {
   // ?all=1                  → combina TODOS los spreadsheets de todos los supervisores
   // (sin ninguno de los dos) → fallback legacy: spreadsheet donde está bindeado el script
   if (action === 'getVisitas') {
+    // Ojo: esta acción responde CSV, no JSON. El error de auth SÍ sale como
+    // JSON, y el cliente los distingue porque un CSV legítimo siempre arranca
+    // con la cabecera FECHA y nunca con '{'.
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const supervisorParam = e.parameter.supervisor || '';
     const wantAll = e.parameter.all === '1';
     const sheetName = e.parameter.sheet || '';
@@ -599,6 +1002,8 @@ function doGet(e) {
 
   // ── Locales base de un supervisor (para autocompletar Nueva Visita) ──
   if (action === 'getLocalesBase') {
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const supervisorParam = e.parameter.supervisor || '';
     const val = _props().getProperty('localesbase|' + supervisorParam);
     let locales = [];
@@ -608,6 +1013,8 @@ function doGet(e) {
 
   // ── Datos de locales ──────────────────────────────────────
   if (action === 'getLocalData') {
+    const auth = _resolveReadAuth(e);
+    if (auth.error) return _ok({ ok: false, error: auth.error, gateExpired: true });
     const all = _props().getProperties();
     const localData = {};
     Object.keys(all).forEach(function (k) {
@@ -618,32 +1025,6 @@ function doGet(e) {
     return _ok({ ok: true, localData });
   }
 
-  // ── Sacar el Filter de un spreadsheet ya existente (solo admin) ──
-  // Un Filter activo rompe appendRow y puede ocultar filas si le queda
-  // algún criterio aplicado. Recorre todas las pestañas y lo saca.
-  if (action === 'removeFilter') {
-    if (!_requireAdminGet(e)) {
-      return _ok({ ok: false, error: 'No autorizado' });
-    }
-    const spreadsheetId = e.parameter.spreadsheetId || '';
-    if (!spreadsheetId) return _ok({ ok: false, error: 'Falta spreadsheetId' });
-    const ss = SpreadsheetApp.openById(spreadsheetId);
-    const result = ss.getSheets().map(function (sh) {
-      const had = !!sh.getFilter();
-      _removeFilterIfAny(sh);
-      return { sheet: sh.getName(), hadFilter: had };
-    });
-    return _ok({ ok: true, sheets: result });
-  }
-
-  // ── DEBUG temporal: último error de doPost ────────────────────
-  if (action === 'getDebugLog') {
-    if (!_requireAdminGet(e)) {
-      return _ok({ ok: false, error: 'No autorizado' });
-    }
-    const raw = _props().getProperty('debug|lastError');
-    return _ok({ ok: true, log: raw ? JSON.parse(raw) : null });
-  }
 
   return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
 }
@@ -671,22 +1052,36 @@ function doPost(e) {
       });
     }
 
+    // ── Gate de la página ────────────────────────────────────
+    // Devuelve un token de solo-lectura. No identifica a nadie: solo acredita
+    // que quien pregunta conoce la contraseña compartida. Las escrituras
+    // siguen exigiendo el token de supervisor, que es cosa aparte.
+    if (data.action === 'gateLogin') {
+      const g = _gateLogin(data.password || data.p || '');
+      if (g.error) return _ok({ ok: false, error: g.error, bloqueado: g.bloqueado || false });
+      return _ok({ ok: true, token: g.token, ttl: g.ttl });
+    }
+
     // ── Crear supervisor (solo admin) ────────────────────────
     if (data.action === 'createSupervisor') {
       const admin = _requireAdmin(data);
       if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
       const nuevoUsername = String(data.newUsername || '').trim();
       if (!nuevoUsername) return _ok({ ok: false, error: 'Falta el nombre de usuario' });
+      if (!String(data.newPassword || '')) return _ok({ ok: false, error: 'Falta la contraseña' });
       // Antes hacía setProperty a secas: crear un supervisor con un usuario que
       // ya existía lo sobrescribía en silencio. Repitiendo el usuario del admin
       // se podía reemplazar su propio registro y quedarse sin acceso de admin.
       const yaExiste = _buscarUsernameExistente(nuevoUsername);
       if (yaExiste) return _ok({ ok: false, error: 'Ese usuario ya existe' });
-      _props().setProperty('supervisor|' + nuevoUsername, JSON.stringify({
-        name: data.nombre, password: data.newPassword, zona: data.zona || '',
-        spreadsheetId: data.spreadsheetId || '', sheetName: data.sheetName || '',
-        isAdmin: data.isAdmin || false
-      }));
+      // Nace hasheado: el texto plano no llega nunca a Script Properties.
+      _props().setProperty('supervisor|' + nuevoUsername, JSON.stringify(
+        _conPasswordHasheada({
+          name: data.nombre, zona: data.zona || '',
+          spreadsheetId: data.spreadsheetId || '', sheetName: data.sheetName || '',
+          isAdmin: data.isAdmin || false
+        }, data.newPassword)
+      ));
       return _ok();
     }
 
@@ -733,6 +1128,127 @@ function doPost(e) {
         ok: true, spreadsheetId: nuevo.getId(), url: nuevo.getUrl(), sheetName: hoja.getName(),
         clear: clearResult
       });
+    }
+
+    // ── Administración de secretos (solo admin) ──────────────
+    // La pantalla "Propiedades del script" del editor pasa a SOLO LECTURA
+    // cuando el proyecto tiene muchas propiedades (este tiene más de 50, entre
+    // supervisores, notas, fotos y datos de local). O sea que rotar la
+    // contraseña del gate, subir el epoch o resetear un supervisor **no se
+    // pueden hacer desde la interfaz**. Estas tres acciones son el reemplazo:
+    // la contraseña viaja en el cuerpo de un POST por HTTPS, nunca por la URL
+    // (que queda en logs e historial), nunca en el código y nunca en el repo.
+    //
+    // Todas exigen token de admin, que se saca con action:'login'. Ese login
+    // usa el limitador por usuario, distinto del limitador global del gate:
+    // por eso, aunque el gate esté bloqueado por intentos, un admin siempre
+    // puede entrar por acá a destrabarlo.
+    if (data.action === 'setGatePassword') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const nueva = String(data.newPassword || '');
+      if (nueva.length < 12) {
+        return _ok({ ok: false, error: 'La contraseña del gate tiene que tener al menos 12 caracteres' });
+      }
+      // Un espacio o un salto de línea pegado sin querer hace fallar todos los
+      // logins después, sin ninguna pista de por qué. Se rechaza en vez de
+      // recortarlo en silencio: recortar sería una sorpresa peor más adelante.
+      if (nueva !== nueva.trim()) {
+        return _ok({ ok: false, error: 'La contraseña no puede empezar ni terminar con espacios o saltos de línea' });
+      }
+      _props().setProperty('GATE_PASSWORD', nueva);
+      let epoch = _gateEpoch();
+      if (data.cerrarSesiones === true) {
+        epoch = _subirEpoch();
+      }
+      return _ok({ ok: true, epoch: epoch, sesionesCerradas: data.cerrarSesiones === true });
+    }
+
+    // Invalida TODOS los tokens de gate vivos y, de paso, limpia el contador de
+    // intentos (que cuelga del epoch). Sirve para las dos emergencias: "se
+    // filtró la contraseña" y "alguien dejó el gate bloqueado".
+    if (data.action === 'cerrarSesionesGate') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      return _ok({ ok: true, epoch: _subirEpoch() });
+    }
+
+    // Reemplaza al procedimiento viejo de "poner password en plano a mano en la
+    // property", que dependía de la pantalla de propiedades.
+    if (data.action === 'setSupervisorPassword') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const destino = String(data.targetUsername || '').trim();
+      if (!destino) return _ok({ ok: false, error: 'Falta el usuario' });
+      const sup = _getSupervisorRaw(destino);
+      if (!sup) return _ok({ ok: false, error: 'Ese usuario no existe' });
+      const nueva = String(data.newPassword || '');
+      if (!nueva) return _ok({ ok: false, error: 'Falta la contraseña nueva' });
+      if (nueva !== nueva.trim()) {
+        return _ok({ ok: false, error: 'La contraseña no puede empezar ni terminar con espacios o saltos de línea' });
+      }
+      // Se guarda ya hasheada: el texto plano no toca Script Properties ni
+      // siquiera de forma transitoria.
+      _props().setProperty('supervisor|' + destino, JSON.stringify(_conPasswordHasheada(sup, nueva)));
+      return _ok({ ok: true });
+    }
+
+    // ── Herramientas manuales de admin ───────────────────────
+    // Las cuatro se invocaban pegando una URL en el navegador con usuario y
+    // contraseña en el querystring, así que la contraseña del admin quedaba en
+    // el historial y en los logs de Google. Ahora van por POST con token.
+    // clearVisitRows además BORRA datos, así que exige confirmar:true.
+    if (data.action === 'restyleSheet') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const sup = _getSupervisorRaw(data.supervisor || '');
+      if (!sup || !sup.spreadsheetId) return _ok({ ok: false, error: 'Supervisor sin spreadsheet asignado' });
+      const ss = SpreadsheetApp.openById(sup.spreadsheetId);
+      const sheet = (sup.sheetName && ss.getSheetByName(sup.sheetName)) || ss.getSheets()[0];
+      const found = _findHeaderRow(sheet);
+      const numCols = found ? found.headers.length : sheet.getLastColumn();
+      _applyTemplateStyle(sheet, numCols);
+      return _ok({ ok: true });
+    }
+
+    if (data.action === 'clearVisitRows') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      if (data.confirmar !== true) {
+        return _ok({ ok: false, error: 'clearVisitRows borra todas las filas: mandá confirmar:true' });
+      }
+      const spreadsheetId = data.spreadsheetId || '';
+      if (!spreadsheetId) return _ok({ ok: false, error: 'Falta spreadsheetId' });
+      const ss = SpreadsheetApp.openById(spreadsheetId);
+      const result = ss.getSheets().map(function (sh) {
+        const r = _clearDataRows(sh);
+        r.sheet = sh.getName();
+        return r;
+      });
+      return _ok({ ok: true, sheets: result });
+    }
+
+    // Un Filter activo rompe appendRow y puede ocultar filas si le queda algún
+    // criterio aplicado. Recorre todas las pestañas y lo saca.
+    if (data.action === 'removeFilter') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const spreadsheetId = data.spreadsheetId || '';
+      if (!spreadsheetId) return _ok({ ok: false, error: 'Falta spreadsheetId' });
+      const ss = SpreadsheetApp.openById(spreadsheetId);
+      const result = ss.getSheets().map(function (sh) {
+        const had = !!sh.getFilter();
+        _removeFilterIfAny(sh);
+        return { sheet: sh.getName(), hadFilter: had };
+      });
+      return _ok({ ok: true, sheets: result });
+    }
+
+    if (data.action === 'getDebugLog') {
+      const admin = _requireAdmin(data);
+      if (admin.error) return _ok({ ok: false, error: admin.error, expired: admin.expired });
+      const raw = _props().getProperty('debug|lastError');
+      return _ok({ ok: true, log: raw ? JSON.parse(raw) : null });
     }
 
     // ── Guardar fotos en Drive ───────────────────────────────
