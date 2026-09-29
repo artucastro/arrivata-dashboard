@@ -326,12 +326,32 @@
     <input id="login-pwd" type="password" placeholder="Contraseña"
       style="margin-bottom:10px;text-align:center;letter-spacing:.1em"
       onkeydown="if(event.key==='Enter') checkLogin()">
-    <div id="login-err" style="display:none;color:#991b1b;font-size:.8rem;margin-bottom:12px;text-align:center;font-weight:700">
-      Contraseña incorrecta. Intentá de nuevo.
-    </div>
-    <button class="btn btn-blue" onclick="checkLogin()" style="width:100%;justify-content:center;padding:10px;font-size:.95rem;margin-top:4px">
+    <!-- El texto lo escribe el backend (contraseña incorrecta / demasiados
+         intentos / acceso sin configurar), así que no va hardcodeado acá. -->
+    <div id="login-err" style="display:none;color:#991b1b;font-size:.8rem;margin-bottom:12px;text-align:center;font-weight:700"></div>
+    <button id="login-btn" class="btn btn-blue" onclick="checkLogin()" style="width:100%;justify-content:center;padding:10px;font-size:.95rem;margin-top:4px">
       Ingresar
     </button>
+  </div>
+</div>
+
+<!-- ── GATE VENCIDO (re-login en sesión) ─────────────────────── -->
+<!-- No se reusa #login-page para esto: es pantalla completa y opaca, así que
+     taparía por completo un formulario a medio cargar. Este modal va en 130:
+     por encima del re-login de supervisor (120) pero por debajo del gate
+     inicial (200). -->
+<div id="modal-gate" class="modal-backdrop" style="display:none;z-index:130">
+  <div class="modal" style="max-width:320px;width:92%;padding:24px">
+    <div style="font-family:'Playfair Display',serif;font-weight:700;color:var(--red);margin-bottom:4px">Tu acceso venció</div>
+    <div style="font-size:.74rem;color:var(--muted);margin-bottom:16px">Ingresá la contraseña para seguir viendo los datos</div>
+    <input id="gate-pwd" type="password" placeholder="Contraseña"
+      onkeydown="if(event.key==='Enter') reintentarGate()"
+      style="width:100%;margin-bottom:8px;box-sizing:border-box">
+    <div id="gate-err" style="display:none;color:#dc2626;font-size:.78rem;margin-bottom:8px;font-weight:700"></div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button id="gate-btn" class="btn btn-blue" onclick="reintentarGate()" style="flex:1;justify-content:center;padding:9px">Ingresar</button>
+      <button class="btn btn-ghost" onclick="cancelarGate()" style="padding:9px 14px">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -1303,17 +1323,163 @@ async function _postOnce(payload, retries=0){
   }
 }
 
+// ── Gate de la página ────────────────────────────────────────
+// La contraseña compartida ya no vive acá: se manda al backend (acción
+// gateLogin) que la compara contra la Script Property GATE_PASSWORD y
+// devuelve un token opaco de solo-lectura (6 h). Ese token es lo que habilita
+// las lecturas, que dejaron de ser públicas.
+//
+// Son DOS credenciales distintas y no hay que mezclarlas:
+//  - token de gate (`arr_gate_token`): habilita LEER. Lo tiene todo el mundo,
+//    incluida gerencia sin perfil de supervisor.
+//  - token de supervisor (`_verifiedToken`): habilita ESCRIBIR. Es de a uno.
+// Por eso el backend responde `gateExpired` a las lecturas y `expired` a las
+// escrituras: si compartieran flag, un refresh de fondo le voltearía la sesión
+// de escritura a alguien en medio de una carga.
+let _gateToken=null;
+let _gatePromise=null, _gateResolve=null;
+let _gatePendiente=false; // venció, pero había un formulario abierto
+
+function _setGateToken(tok){
+  _gateToken=tok;
+  try{ sessionStorage.setItem('arr_gate_token', tok); }catch(e){}
+}
+function _clearGateToken(){
+  _gateToken=null;
+  try{ sessionStorage.removeItem('arr_gate_token'); }catch(e){}
+}
+
+// ¿Hay un formulario abierto que el gate taparía? El modal del gate es
+// pantalla completa y opaco: si se abre encima de una visita a medio cargar,
+// el usuario ve desaparecer su trabajo (aunque siga en memoria) y lo más
+// probable es que recargue — y ahí sí pierde las fotos, que no van al borrador.
+function _formAbierto(){
+  return ['modal-visita','modal-local-data','modal-verificar','modal-export','modal-nota']
+    .some(id=>{ const el=document.getElementById(id);
+                return el && getComputedStyle(el).display!=='none'; });
+}
+
+// Pide la contraseña del gate. Deduplica: processCSV dispara tres lecturas en
+// paralelo y las tres pueden vencer juntas — tiene que salir UN solo modal.
+function pedirGate(){
+  if(_gatePromise) return _gatePromise;
+  // El re-login de supervisor tiene prioridad: detrás suyo hay datos sin
+  // guardar. El modal del gate lo taparía y la escritura quedaría colgada
+  // esperando una promesa que el usuario no puede alcanzar.
+  if(_reloginPromise){ _gatePendiente=true; return Promise.resolve(false); }
+  if(_formAbierto()){
+    _gatePendiente=true;
+    showToast('El acceso venció — te lo vamos a pedir cuando cierres esto');
+    return Promise.resolve(false);
+  }
+  _clearGateToken();
+  _gatePromise=new Promise(res=>{ _gateResolve=res; });
+  abrirModalGate();
+  return _gatePromise;
+}
+function _resolverGate(ok){
+  if(_gateResolve) _gateResolve(ok);
+  _gatePromise=null; _gateResolve=null;
+}
+
+function abrirModalGate(){
+  const m=document.getElementById('modal-gate');
+  if(!m) return;
+  document.getElementById('gate-err').style.display='none';
+  document.getElementById('gate-pwd').value='';
+  m.style.display='flex';
+  setTimeout(()=>{ const i=document.getElementById('gate-pwd'); if(i) i.focus(); },100);
+}
+function cancelarGate(){
+  const m=document.getElementById('modal-gate');
+  if(m) m.style.display='none';
+  _resolverGate(false);
+}
+
+// Si el gate venció mientras había un formulario abierto, se pide al cerrarlo.
+function revisarGatePendiente(){
+  if(!_gatePendiente) return;
+  if(_formAbierto()) return;
+  _gatePendiente=false;
+  pedirGate().then(ok=>{ if(ok) loadData(); });
+}
+
+// Único camino de LECTURA. Espejo de postAction(): agrega el token, detecta el
+// vencimiento y reintenta UNA vez con el token nuevo.
+// `as:'text'` es para getVisitas, que responde CSV y no JSON.
+async function apiGet(action, params, opts){
+  const as=(opts&&opts.as)||'json';
+  const construirUrl=()=>{
+    const qs=new URLSearchParams({action, ...(params||{})});
+    if(_gateToken) qs.set('t', _gateToken);
+    qs.set('_t', Date.now());
+    return app.cfg.scriptUrl+'?'+qs.toString();
+  };
+  const pedir=async()=>{
+    const r=await fetch(construirUrl(), {mode:'cors', credentials:'omit', cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const txt=await r.text();
+    // getVisitas responde CSV, pero su error de auth sale como JSON. Un CSV
+    // legítimo SIEMPRE arranca con la cabecera FECHA y nunca con '{', así que
+    // el primer carácter alcanza para distinguirlos sin ambigüedad.
+    const head=txt.replace(/^﻿/,'').trimStart();
+    if(as==='text' && head.charAt(0)!=='{') return {ok:true, text:txt};
+    let j=null;
+    try{ j=JSON.parse(head); }catch(e){
+      if(as==='text') return {ok:true, text:txt};
+      throw new Error('Respuesta ilegible del Apps Script');
+    }
+    return j;
+  };
+  if(!app.cfg.scriptUrl) return {ok:false, error:'Falta configurar la URL del Apps Script.'};
+  let j=await pedir();
+  if(!(j && j.gateExpired)) return j;
+  if(!(await pedirGate())) return j;
+  return pedir(); // un solo reintento, igual que en las escrituras
+}
+
 // ── Login ────────────────────────────────────────────────────
-function checkLogin(){
-  const pwd=document.getElementById('login-pwd').value;
-  if(pwd==='Arrivata123'){
-    sessionStorage.setItem('arr_auth','1');
+// checkLogin pasa a ser asíncrono: antes comparaba un literal, ahora es una
+// ida y vuelta a la red. El botón se deshabilita mientras tanto para que un
+// doble Enter no queme dos intentos del límite.
+async function checkLogin(){
+  await _enviarGate('login-pwd','login-err','login-btn', ()=>{
     document.getElementById('login-page').style.display='none';
     refreshNavSupervisor();
-  } else {
-    document.getElementById('login-err').style.display='block';
-    document.getElementById('login-pwd').value='';
-    document.getElementById('login-pwd').focus();
+    arrancarApp();
+  });
+}
+
+async function reintentarGate(){
+  await _enviarGate('gate-pwd','gate-err','gate-btn', ()=>{
+    document.getElementById('modal-gate').style.display='none';
+    _resolverGate(true);
+  });
+}
+
+async function _enviarGate(idPwd, idErr, idBtn, alEntrar){
+  const inp=document.getElementById(idPwd);
+  const err=document.getElementById(idErr);
+  const btn=document.getElementById(idBtn);
+  const pwd=inp.value;
+  if(!pwd){ err.textContent='Ingresá la contraseña'; err.style.display='block'; return; }
+  if(btn){ btn.disabled=true; btn.style.opacity='.6'; }
+  err.style.display='none';
+  try{
+    const d=await _postOnce({action:'gateLogin', password:pwd});
+    if(d && d.ok && d.token){
+      _setGateToken(d.token);
+      inp.value='';
+      alEntrar();
+      return;
+    }
+    // El mensaje viene del backend: distingue contraseña incorrecta de
+    // bloqueo por intentos y de "el acceso no está configurado".
+    err.textContent=(d && d.error) || 'No se pudo verificar la contraseña';
+    err.style.display='block';
+    inp.value=''; inp.focus();
+  } finally {
+    if(btn){ btn.disabled=false; btn.style.opacity=''; }
   }
 }
 
@@ -1385,8 +1551,7 @@ async function cargarListaSupervisores(){
   list.innerHTML='<div style="color:var(--muted);font-size:.8rem">Cargando...</div>';
   if(!app.cfg.scriptUrl){ list.innerHTML='<div style="color:var(--muted);font-size:.8rem">Configurá la URL del Apps Script primero.</div>'; return; }
   try{
-    const r=await fetch(app.cfg.scriptUrl+'?action=getSupervisors',{redirect:'follow'});
-    const d=await r.json();
+    const d=await apiGet('getSupervisors');
     if(!d.ok||!d.supervisors.length){
       list.innerHTML='<div style="color:var(--muted);font-size:.8rem">No hay supervisores cargados aún.</div>';
       return;
@@ -1672,37 +1837,19 @@ function cselSync(id){
   if(sel && sel._cselSync) sel._cselSync();
 }
 
+// Las tres lecturas de arranque. Antes estaban sueltas en el boot y corrían
+// SIEMPRE, incluso con la pantalla de login tapando todo: el gate era puro
+// adorno y los datos ya habían viajado. Ahora solo se llama con token de gate.
+function arrancarApp(){
+  loadData();
+  loadLocalesBase();
+  loadSupervisors();
+}
+
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Auth check
-  if(sessionStorage.getItem('arr_auth')==='1'){
-    document.getElementById('login-page').style.display='none';
-    // Restaurar perfil del supervisor y la sesión verificada (sobrevive a
-    // un F5 mientras no pasen los 55 min desde el login; sessionStorage se borra solo al
-    // cerrar la pestaña/navegador)
-    const supStr=sessionStorage.getItem('arr_supervisor');
-    if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
-    const tokenStr=sessionStorage.getItem('arr_verified_token');
-    if(tokenStr){
-      _verifiedToken=tokenStr;
-      const verAt=parseInt(sessionStorage.getItem('arr_verified_at')||'0',10);
-      if(!isNaN(verAt)) _verifiedAt=verAt;
-    } else {
-      // Sesión anterior al token (guardaba la contraseña en claro) o nunca
-      // verificada: no reusar nada — se fuerza re-login en la próxima
-      // operación que lo requiera.
-      sessionStorage.removeItem('arr_verified_pwd');
-      sessionStorage.removeItem('arr_verified_at');
-    }
-    // Si ya te identificaste como supervisor, arrancás viendo tu propia zona;
-    // si no (contraseña compartida, ej. gerentes/CEOs), arranca en Global.
-    if(app.supervisor&&app.supervisor.username) app.viewZone=app.supervisor.username;
-    refreshNavSupervisor();
-  } else {
-    refreshEditGating();
-    setTimeout(()=>document.getElementById('login-pwd').focus(), 100);
-  }
-
+  // 1. Config primero: ahora el gate es una llamada de red, así que
+  // app.cfg.scriptUrl tiene que estar resuelto antes que nada.
   const saved = localStorage.getItem('arrivata_v2');
   if (saved) try { const p=JSON.parse(saved); app.cfg={...app.cfg,...p}; } catch(e){}
   if (!app.cfg.scriptUrl) app.cfg.scriptUrl = DEFAULT_SCRIPT_URL;
@@ -1713,6 +1860,31 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('arrivata_v2', JSON.stringify(app.cfg));
     localStorage.setItem('arrivata_defaults_sync', DEFAULT_SCRIPT_URL);
   }
+
+  // 2. Restaurar las DOS sesiones de sessionStorage. Ya no se usa `arr_auth`:
+  // era un flag que el propio navegador podía escribir, así que "estar
+  // logueado" se podía falsificar con una línea en la consola. La única señal
+  // de acceso ahora es tener un token de gate que el backend acepte.
+  try{ _gateToken=sessionStorage.getItem('arr_gate_token')||null; }catch(e){}
+  const supStr=sessionStorage.getItem('arr_supervisor');
+  if(supStr) try{ app.supervisor=JSON.parse(supStr); }catch(e){}
+  const tokenStr=sessionStorage.getItem('arr_verified_token');
+  if(tokenStr){
+    _verifiedToken=tokenStr;
+    const verAt=parseInt(sessionStorage.getItem('arr_verified_at')||'0',10);
+    if(!isNaN(verAt)) _verifiedAt=verAt;
+  } else {
+    // Sesión anterior al token (guardaba la contraseña en claro) o nunca
+    // verificada: no reusar nada — se fuerza re-login en la próxima
+    // operación que lo requiera.
+    sessionStorage.removeItem('arr_verified_pwd');
+    sessionStorage.removeItem('arr_verified_at');
+  }
+  // Si ya te identificaste como supervisor, arrancás viendo tu propia zona;
+  // si no (contraseña compartida, ej. gerentes/CEOs), arranca en Global.
+  if(app.supervisor&&app.supervisor.username) app.viewZone=app.supervisor.username;
+
+  // 3. Preparar la pantalla. Nada de esto toca la red.
   const savedCharts = localStorage.getItem('arrivata_charts');
   if(savedCharts) try { app.chartConfigs=JSON.parse(savedCharts); } catch(e){}
   // Sync selectors with saved config
@@ -1726,10 +1898,24 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inp-hasta').value=hoyAR();
   document.getElementById('inp-desde').value=hoyAR(-30);
   renderSidebar();
-  loadData();
-  loadLocalesBase();
-  loadSupervisors();
-  setInterval(loadData, 5*60*1000); // auto-sync cada 5 minutos
+
+  // 4. El gate decide si se sale a la red. El token guardado se usa de forma
+  // optimista: si murió (vencido, desalojado del cache, o epoch cambiado), la
+  // primera lectura vuelve con gateExpired y ahí se pide la contraseña — un
+  // solo pedido, y no uno al arrancar más otro al leer.
+  if(_gateToken){
+    document.getElementById('login-page').style.display='none';
+    refreshNavSupervisor();
+    arrancarApp();
+  } else {
+    refreshEditGating();
+    setTimeout(()=>document.getElementById('login-pwd').focus(), 100);
+  }
+
+  // 5. Auto-sync cada 5 min, con dos guardas: sin token no se piden lecturas
+  // que van a rebotar, y con un pedido de contraseña ya abierto no se encola
+  // otro encima (si no, al vencer el token el modal reaparecería cada 5 min).
+  setInterval(()=>{ if(_gateToken && !_gatePromise) loadData(); }, 5*60*1000);
 
   // Delegate click for local-link buttons inside main table
   document.getElementById('tbl-body').addEventListener('click', e => {
@@ -1811,12 +1997,19 @@ function processCSV(csv){
   loadLocalData();
 }
 
-function visitasUrl(){
-  const zone=app.viewZone;
-  const qs = zone==='all' ? '&all=1' : (zone ? '&supervisor=' + encodeURIComponent(zone) : '');
-  return app.cfg.scriptUrl + '?action=getVisitas' + qs + '&_t=' + Date.now();
+// Devuelve SOLO los parámetros; la URL (token y cache-buster incluidos) la
+// arma apiGet. Antes esto construía la URL a mano y fetchVisitasRows repetía
+// la misma lógica por su cuenta, que es justo como un sitio se queda sin
+// token: ahora ninguno de los dos construye URLs.
+function visitasParams(zone){
+  const z = zone===undefined ? app.viewZone : zone;
+  if(z==='all') return {all:'1'};
+  return z ? {supervisor:z} : {};
 }
 
+// Nunca rechaza: saveAndLoad() y selectZone() la llaman sin await, y ahora
+// puede disparar un pedido de contraseña asíncrono. Si rechazara, esos
+// caminos quedarían colgados.
 function loadData(){
   setLoading(true);
   document.getElementById('empty-error').style.display='none';
@@ -1825,12 +2018,20 @@ function loadData(){
     setLoading(false);
     return Promise.resolve();
   }
-  return fetch(visitasUrl(), { mode:'cors', credentials:'omit', cache:'no-store' })
-    .then(r => {
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
+  return apiGet('getVisitas', visitasParams(), {as:'text'})
+    .then(d => {
+      if(d && d.ok && typeof d.text==='string') return processCSV(d.text);
+      // Tres causas distintas, tres mensajes distintos. Antes cualquier fallo
+      // decía "verificá la URL", que para un problema de acceso despista.
+      if(d && d.gateExpired){
+        showError('Tu acceso venció.\n\nIngresá la contraseña de nuevo para ver los datos.');
+      } else if(d && d.error){
+        showError('El Apps Script rechazó el pedido.\n\n' + d.error);
+      } else {
+        showError('No se pudo cargar los datos desde el Apps Script.\n\nVerificá la URL configurada y tu conexión a internet.');
+      }
+      setLoading(false);
     })
-    .then(csv => processCSV(csv))
     .catch(err => {
       showError('No se pudo cargar los datos desde el Apps Script.\n\nVerificá la URL configurada y tu conexión a internet.\n\n(' + (err.message||'error de red') + ')');
       setLoading(false);
@@ -1841,8 +2042,7 @@ function loadData(){
 async function loadSupervisors(){
   if(!app.cfg.scriptUrl) return;
   try{
-    const r=await fetch(app.cfg.scriptUrl+'?action=getSupervisors',{redirect:'follow'});
-    const d=await r.json();
+    const d=await apiGet('getSupervisors');
     if(d.ok){ app.allSupervisors=d.supervisors||[]; renderSidebar(); renderReportScope(); }
   } catch(e){}
 }
@@ -1888,8 +2088,7 @@ async function loadLocalesBase(){
   app._localesBase=[];
   if(!app.cfg.scriptUrl || app.viewZone==='all') return;
   try{
-    const r=await fetch(app.cfg.scriptUrl+'?action=getLocalesBase&supervisor='+encodeURIComponent(app.viewZone),{redirect:'follow'});
-    const d=await r.json();
+    const d=await apiGet('getLocalesBase', {supervisor:app.viewZone});
     if(d.ok) app._localesBase=d.locales||[];
   } catch(e){}
 }
@@ -3076,11 +3275,11 @@ function getReportScopeLabel(scope){
 // sin tocar app.raw ni la vista principal — para generar reportes de un
 // alcance distinto al que se está mirando en el dashboard.
 async function fetchVisitasRows(scope){
-  const qs = scope==='all' ? '&all=1' : '&supervisor=' + encodeURIComponent(scope);
-  const r = await fetch(app.cfg.scriptUrl+'?action=getVisitas'+qs+'&_t='+Date.now(), { mode:'cors', credentials:'omit', cache:'no-store' });
-  if(!r.ok) throw new Error('HTTP '+r.status);
-  const csv = await r.text();
-  const res = Papa.parse(csv, { header:false });
+  const d = await apiGet('getVisitas', visitasParams(scope), {as:'text'});
+  if(!(d && d.ok && typeof d.text==='string')){
+    throw new Error((d && d.error) || 'No se pudieron traer las visitas');
+  }
+  const res = Papa.parse(d.text, { header:false });
   const rows = res.data;
   const hIdx = rows.findIndex(row => String(row[0]||'').trim().toUpperCase()==='FECHA');
   if(hIdx===-1) throw new Error('No se encontró la fila de encabezados');
@@ -3831,8 +4030,7 @@ async function saveNota(local, fecha, texto){
 
 function loadNotas(){
   if(!app.cfg.scriptUrl) return;
-  fetch(app.cfg.scriptUrl+'?action=getNotas',{redirect:'follow'})
-    .then(r=>r.json())
+  apiGet('getNotas')
     .then(d=>{
       if(d.ok){
         app._notas=d.notas||{};
@@ -3840,7 +4038,8 @@ function loadNotas(){
         if(app.detLocal) applyDetailPeriod(app.detPeriodDays);
       }
     })
-    .catch(()=>{});
+    .catch(()=>{}); // se sigue tragando el fallo de RED (deuda de la etapa 4);
+                    // el de acceso ya lo maneja apiGet pidiendo la contraseña
 }
 
 function verNota(local, fecha){
@@ -4012,8 +4211,7 @@ function removeVFPhoto(i){ VF_PHOTOS.splice(i,1); renderVFPhotoPreviews(); sched
 
 function loadFotosLocal(localName){
   if(!app.cfg.scriptUrl) return;
-  fetch(app.cfg.scriptUrl+'?action=getFotos&local='+encodeURIComponent(localName),{redirect:'follow'})
-    .then(r=>r.json())
+  apiGet('getFotos', {local:localName})
     .then(d=>{
       if(d.ok){
         app._fotos[localName]=d.fotos||{};
@@ -4027,8 +4225,7 @@ function loadFotosLocal(localName){
 // indicador de fotos en la tabla principal, no solo en el detalle de un local.
 function loadFotos(){
   if(!app.cfg.scriptUrl) return;
-  fetch(app.cfg.scriptUrl+'?action=getFotos',{redirect:'follow'})
-    .then(r=>r.json())
+  apiGet('getFotos')
     .then(d=>{
       if(d.ok){
         app._fotos=d.fotos||{};
@@ -4056,8 +4253,7 @@ async function fetchFotoDataUri(url){
   if(!id||!app.cfg.scriptUrl) return url; // no es de Drive (ej. preview local): usar tal cual
   if(_fotoDataCache[id]) return _fotoDataCache[id];
   try{
-    const r=await fetch(`${app.cfg.scriptUrl}?action=getFotoData&id=${id}`,{redirect:'follow'});
-    const d=await r.json();
+    const d=await apiGet('getFotoData', {id});
     if(d.ok){
       const uri=`data:${d.mimeType||'image/jpeg'};base64,${d.data}`;
       _fotoDataCache[id]=uri;
@@ -4102,8 +4298,7 @@ function closeFotoLightbox(){ document.getElementById('modal-foto').style.displa
 // ── Datos del local ──────────────────────────────────────────────
 function loadLocalData(){
   if(!app.cfg.scriptUrl) return;
-  fetch(app.cfg.scriptUrl+'?action=getLocalData',{redirect:'follow'})
-    .then(r=>r.json())
+  apiGet('getLocalData')
     .then(d=>{ if(d.ok) app._localData=d.localData||{}; })
     .catch(()=>{});
 }
@@ -4296,6 +4491,9 @@ function cancelarVisita(){
 function closeCargarVisita(){
   document.getElementById('modal-visita').style.display='none';
   VF_EDIT=null;
+  // Si el acceso venció mientras el formulario estaba abierto, se pospuso el
+  // pedido para no taparlo. Ahora que se cerró, es el momento.
+  revisarGatePendiente();
 }
 
 // ── Verificación de identidad por supervisor ──────────────────
@@ -4421,6 +4619,7 @@ function cancelarVerificacion(){
   document.getElementById('modal-verificar').style.display='none';
   _pendingVerOp=null;
   _resolverRelogin(false);
+  revisarGatePendiente(); // el gate cede ante este modal; si quedó pendiente, va ahora
 }
 
 function ejecutarOpPendiente(supervisor, token){
