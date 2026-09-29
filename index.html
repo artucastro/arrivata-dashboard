@@ -2984,7 +2984,9 @@ async function generateReport(type){
       app._lastRich = rich;
       if(rtype==='profesional'){
         let g1='';
-        try { g1 = extractReportText(await callAnthropic(buildInstructionReport(rich,instrucciones,'1'), 12000, fileBlocks)); } catch(e){ g1=''; }
+        // Falla de transporte → se corta (ver callAnthropic): caer al
+        // informe alternativo sería otra llamada paga a ciegas.
+        try { g1 = extractReportText(await callAnthropic(buildInstructionReport(rich,instrucciones,'1'), 12000, fileBlocks)); } catch(e){ if(e.transporte) throw e; g1=''; }
         if(g1){
           const se=document.getElementById('rpt-status'); if(se) se.textContent='Generando gráficos y conclusiones (2/2)...';
           let g2='';
@@ -3015,7 +3017,7 @@ async function generateReport(type){
       try {
         const r1 = await callAnthropic(buildProfPart1(stats, instrucciones), 8192, fileBlocks);
         text1 = extractReportText(r1);
-      } catch(e1){ text1=''; }
+      } catch(e1){ if(e1.transporte) throw e1; text1=''; } // transporte: sin informe alternativo (llamada paga)
 
       if(text1){
         const statusEl=document.getElementById('rpt-status');
@@ -3041,7 +3043,7 @@ async function generateReport(type){
       try {
         const c1 = await callAnthropic(buildChainPart1(stats, instrucciones), 8192, fileBlocks);
         chainText1 = extractReportText(c1);
-      } catch(e1){ chainText1=''; }
+      } catch(e1){ if(e1.transporte) throw e1; chainText1=''; } // transporte: sin informe alternativo (llamada paga)
 
       if(chainText1){
         const statusEl2=document.getElementById('rpt-status');
@@ -3168,6 +3170,15 @@ async function callAnthropic(prompt, maxTok, fileBlocks=[]){
     if(intento) await new Promise(res=>setTimeout(res, 900*intento));
     const d=await postAction({action:'callClaude', maxTokens:maxTok, content, ..._authFields()}, 'ia');
     last=d;
+    if(d && d.transporte){
+      // NO se reintenta: una falla de transporte (rebote del echo, 404, HTML,
+      // red) suele llegar DESPUÉS de que el script ya llamó a Anthropic, así
+      // que cada reintento es otra llamada paga. Se corta acá, y los
+      // llamadores dejan pasar este error sin caer a su informe alternativo.
+      const e=new Error('No llegó la respuesta de la IA ('+d.error+'). Puede que se haya generado y cobrado igual: esperá un momento antes de volver a intentar.');
+      e.transporte=true;
+      throw e;
+    }
     if(d && d.ok===false){
       if(d.expired || _errorApiEsPermanente(d.error)) throw new Error(d.error||'Error de API');
       continue; // error transitorio → reintentar
