@@ -325,6 +325,16 @@ Detalles que importan:
   puesta antes del push, gerencia ve las métricas rotas hasta que recargue.
   El encabezado del sheet y la clave del mapa tienen que coincidir carácter por
   carácter; si no, salta un `console.warn` al cargar los datos.
+- **Top 20** (`openTop`, `top20`): ranking de locales de todos los
+  supervisores, independiente de la zona elegida. Pide `getVisitas` **por
+  supervisor** y etiqueta cada fila (`_sup`), porque el CSV global no dice de
+  quién es cada visita. El puntaje sale de `scoreDeVisitas()`, la misma
+  fórmula que Locales; el orden compara el puntaje **sin redondear** (si no, un
+  12/13 empata con un completo). Un local de dos supervisores es una sola fila,
+  a nombre del que más lo visitó en el período. El detalle abierto desde el
+  Top recibe esas filas (`app._detRows`) y mientras tanto
+  `canEditCurrentZone()` da `false`: mezcla supervisores y editar escribiría en
+  el sheet de la zona actual.
 - **HTML dinámico**: todo dato externo (sheet, Script Properties, input de
   usuario, respuesta de la IA) se escapa antes de ir a `innerHTML`: `esc()`
   para texto y atributos (escapa `& < > " '`), `escJs()` para strings dentro

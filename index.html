@@ -154,6 +154,22 @@
 
   h1,h2,h3,.heading { font-family:'Playfair Display',serif; }
 
+  /* ── TOP 20 ─────────────────────────────────────────── */
+  .top-row { display:grid; grid-template-columns:44px minmax(0,1fr) auto 78px; gap:14px; align-items:center; padding:14px 16px; margin-bottom:10px; cursor:pointer; transition:transform .15s,box-shadow .15s; }
+  .top-row:hover { transform:translateY(-1px); box-shadow:0 8px 20px -6px rgba(139,23,20,.14); }
+  .top-rank { font-family:'Playfair Display',serif; font-size:1.35rem; font-weight:800; color:var(--muted); text-align:center; }
+  .top-rank.podio { color:var(--red); }
+  .top-name { font-family:'Playfair Display',serif; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .top-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
+  .top-chip { border-radius:999px; padding:1px 9px; font-size:.67rem; font-weight:700; background:#F5EDE0; color:#7B6A55; white-space:nowrap; }
+  .top-falta { font-size:.7rem; color:#7B6A55; margin-top:6px; }
+  .top-metrics { display:flex; gap:16px; }
+  .top-metric { text-align:center; min-width:58px; }
+  .top-metric .v { font-size:.9rem; font-weight:800; color:var(--text); }
+  .top-metric .l { font-size:.62rem; color:var(--muted); white-space:nowrap; }
+  .top-score { text-align:center; border-radius:12px; padding:8px 6px; }
+  .top-seg { display:inline-flex; gap:6px; flex-wrap:wrap; }
+
   /* ── LOGIN PAGE ─────────────────────────────────────── */
   #login-page { position:fixed;inset:0;z-index:200;background:var(--cream);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px; }
   #login-page .login-card { background:#fff;border-radius:14px;border-top:4px solid var(--red);padding:36px 32px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(139,23,20,.18); }
@@ -235,6 +251,14 @@
     .loc-filters { flex-direction:column !important; }
     .loc-filters input,
     .loc-filters select { width:100% !important; }
+
+    /* Top 20: puesto + local + puntaje arriba, métricas en una segunda línea */
+    .top-row { grid-template-columns:30px minmax(0,1fr) 62px; gap:10px; padding:12px; }
+    .top-rank { font-size:1.1rem; }
+    .top-metrics { grid-column:2 / -1; grid-row:2; justify-content:space-between; gap:6px; }
+    .top-metric { min-width:0; }
+    .top-filters { flex-direction:column !important; align-items:stretch !important; }
+    .top-filters select { width:100% !important; max-width:none !important; }
   }
 
   @media(max-width:480px){
@@ -984,7 +1008,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         Volver
       </button>
-      <select id="det-selector" class="det-selector" onchange="openDetail(this.value)" style="width:auto;min-width:240px;font-weight:500;flex:1;max-width:400px">
+      <select id="det-selector" class="det-selector" onchange="openDetail(this.value, app._detFrom, app._detRows||undefined)" style="width:auto;min-width:240px;font-weight:500;flex:1;max-width:400px">
       </select>
       <button id="btn-nueva-visita-det" class="btn" onclick="abrirVerificacion('cargarVisita',document.getElementById('det-name').textContent)"
         style="background:#16a34a;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:7px 14px;font-size:.82rem;font-weight:700;display:flex;align-items:center;gap:6px;flex-shrink:0">
@@ -1190,6 +1214,65 @@
 
     <!-- Grid de locales -->
     <div id="loc-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px"></div>
+
+  </div>
+</div>
+
+<!-- ── TOP 20 ────────────────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="top-view" style="display:none;background:var(--cream);min-height:100vh">
+  <div class="main-pad" style="max-width:1100px;margin:0 auto;padding:24px">
+
+    <!-- Topbar -->
+    <div class="loc-topbar" style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="closeTop()" style="font-size:.85rem;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Dashboard
+      </button>
+      <div style="flex:1;min-width:0">
+        <span id="top-title" style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--red)">Top 20</span>
+        <span style="font-size:.75rem;color:var(--muted);margin-left:6px">Todos los supervisores</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="cargarTop(true)" style="padding:6px 10px;font-size:.8rem" title="Volver a traer las visitas">Actualizar</button>
+        <button class="btn btn-ghost" onclick="exportarTopExcel()" style="padding:6px 10px;font-size:.8rem">Excel</button>
+        <button class="btn btn-ghost" onclick="exportarTopPDF()" style="padding:6px 10px;font-size:.8rem">PDF</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card" style="padding:14px 18px;margin-bottom:14px">
+      <div class="top-filters" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <div class="top-seg">
+          <button class="btn btn-ghost top-period-btn" data-days="7"  onclick="setTopPeriod(7)"  style="padding:5px 14px;font-size:.8rem">Última semana</button>
+          <button class="btn btn-ghost top-period-btn" data-days="30" onclick="setTopPeriod(30)" style="padding:5px 14px;font-size:.8rem">Último mes</button>
+          <button class="btn btn-ghost top-period-btn" data-days="0"  onclick="setTopPeriod(0)"  style="padding:5px 14px;font-size:.8rem">Total</button>
+        </div>
+        <div class="top-seg">
+          <button class="btn btn-ghost top-modo-btn" data-modo="mejores" onclick="setTopModo('mejores')" style="padding:5px 14px;font-size:.8rem">🏆 Mejores 20</button>
+          <button class="btn btn-ghost top-modo-btn" data-modo="peores"  onclick="setTopModo('peores')"  style="padding:5px 14px;font-size:.8rem">⚠ Peores 20</button>
+        </div>
+        <select id="top-cadena" onchange="renderTop()" style="min-width:160px;max-width:200px">
+          <option value="">Todas las cadenas</option>
+          <option value="JUMBO/DISCO">Jumbo / Disco</option>
+          <option value="COTO">Coto</option>
+          <option value="CARREFOUR/INC">Carrefour</option>
+          <option value="Otras">Otras</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Resumen -->
+    <div id="top-resumen" style="font-size:.8rem;color:var(--muted);margin-bottom:12px;line-height:1.5"></div>
+
+    <!-- Lista -->
+    <div id="top-list"></div>
+
+    <div style="font-size:.7rem;color:var(--muted);margin-top:16px;line-height:1.6">
+      Puntaje del 1 al 10: mitad presencia (visitas con algún producto Arrivata) y mitad variedad (cuántos productos Arrivata aparecieron).
+      El orden usa el puntaje con decimales (un 9,6 queda debajo de un 10 aunque los dos se muestren como 10); si empatan, desempata el promedio de unidades Arrivata por visita, y después la visita más reciente.
+      Un local cargado por los dos supervisores aparece una sola vez, a nombre del que más lo visitó en el período.
+    </div>
 
   </div>
 </div>
@@ -2027,6 +2110,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (card) openDetail(card.dataset.local, 'locales');
   });
 
+  // Tocar un local del Top 20 abre su detalle con las visitas de todos
+  document.getElementById('top-list').addEventListener('click', e => {
+    const row = e.target.closest('.top-row');
+    if (row && top20.rows) openDetail(row.dataset.local, 'top', top20.rows);
+  });
+
   initCustomSelects();
 
   // Autoguardado del borrador de visita nueva (ver saveVFDraftNow)
@@ -2163,25 +2252,41 @@ function renderSidebar(){
   if(!list) return;
   const sups=[...(app.allSupervisors||[])].sort((a,b)=>a.name.localeCompare(b.name));
   const myUser=(app.supervisor&&app.supervisor.username)||'';
+  // Con el Top 20 abierto, el resaltado es solo suyo: el Top no depende de la
+  // zona elegida y marcar las dos cosas daría a entender que sí.
+  const zonaActiva=value=>!app._topOpen&&app.viewZone===value;
   const itemHtml=(value,name,sub,mine)=>`
-    <div class="sb-item${app.viewZone===value?' active':''}" onclick="selectZone('${escJs(value)}')">
+    <div class="sb-item${zonaActiva(value)?' active':''}" onclick="selectZone('${escJs(value)}')">
       <div class="sb-name">${esc(name)}${mine?' · vos':''}</div>
       ${sub?`<div class="sb-sub">${esc(sub)}</div>`:''}
     </div>`;
   let html=itemHtml('all','🌐 Global','Todos los supervisores',false);
   html+='<div class="sb-divider"></div>';
   html+=sups.map(s=>itemHtml(s.username, s.name, s.zona||'', s.username===myUser)).join('');
+  html+='<div class="sb-divider"></div>';
+  html+=`<div class="sb-item${app._topOpen?' active':''}" onclick="openTop()">
+      <div class="sb-name">🏆 Top 20</div>
+      <div class="sb-sub">Mejores locales, todos los supervisores</div>
+    </div>`;
   list.innerHTML=html;
 
   // Pills de zona en la navbar mobile (mismo dato, forma compacta)
   const pills=document.getElementById('nav-zone-pills');
   if(pills){
-    const pillHtml=(value,label)=>`<button type="button" class="zpill${app.viewZone===value?' active':''}" onclick="selectZone('${escJs(value)}')">${esc(label)}</button>`;
-    pills.innerHTML=pillHtml('all','Global')+sups.map(s=>pillHtml(s.username,s.name)).join('');
+    const pillHtml=(value,label)=>`<button type="button" class="zpill${zonaActiva(value)?' active':''}" onclick="selectZone('${escJs(value)}')">${esc(label)}</button>`;
+    pills.innerHTML=pillHtml('all','Global')+sups.map(s=>pillHtml(s.username,s.name)).join('')
+      +`<button type="button" class="zpill${app._topOpen?' active':''}" onclick="openTop()">🏆 Top 20</button>`;
   }
 }
 
 function selectZone(value){
+  // Elegir una zona desde el Top 20 vuelve al dashboard de esa zona
+  // (también si se está en el detalle de un local abierto desde el Top)
+  if(app._topOpen){
+    _ocultarTop();
+    document.getElementById('detail-view').style.display='none';
+    document.getElementById('main-view').style.display='block';
+  }
   app.viewZone=value;
   renderSidebar();
   refreshEditGating();
@@ -2216,6 +2321,9 @@ function closeSidebarMobile(){
 // ── Permisos de edición ─────────────────────────────────────────
 function canEditCurrentZone(){
   if(!app.supervisor || !app.supervisor.username) return false;
+  // Detalle abierto desde el Top 20: mezcla visitas de todos los supervisores,
+  // y editar escribiría en el sheet de la zona actual (puede no ser el suyo).
+  if(app._detRows) return false;
   if(app.viewZone==='all') return false; // "Global" no es un spreadsheet puntual, no hay a dónde escribir
   if(app.supervisor.isAdmin) return true;
   return app.viewZone===app.supervisor.username;
@@ -2644,12 +2752,18 @@ function arrColsDeVisita(row){
   return (app.brandCols.ARRIVATA||[]).filter(c=>productoAplica(row,c));
 }
 
-function openDetail(localName, from='main'){
+// `rows`: de dónde salen las visitas. Por defecto app.raw (la zona actual);
+// el Top 20 pasa las de todos los supervisores, porque el local puede no
+// estar en la zona que se está mirando.
+function openDetail(localName, from='main', rows){
   if(!localName) return;
+  const src=rows||app.raw;
   app._detFrom = from;
   app.detLocal = localName;
+  app._detRows = rows||null;
+  refreshEditGating();
 
-  const visits=[...app.raw]
+  const visits=[...src]
     .filter(r=>r['Local']===localName)
     .sort((a,b)=>{ const da=parseDate(a['FECHA']),db=parseDate(b['FECHA']); return (da||new Date(0))-(db||new Date(0)); });
 
@@ -2665,18 +2779,19 @@ function openDetail(localName, from='main'){
   document.getElementById('det-zona-lbl').textContent=visits[0]._zona||'—';
 
   // Populate selector
-  const allLocals=[...new Set(app.raw.map(r=>r['Local']).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  const allLocals=[...new Set(src.map(r=>r['Local']).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
   const sel=document.getElementById('det-selector');
   sel.innerHTML=allLocals.map(l=>`<option value="${esc(l)}"${l===localName?' selected':''}>${esc(l)}</option>`).join('');
 
   // Update back button text
   const backBtn = document.getElementById('det-back-btn');
   if (backBtn) backBtn.childNodes[backBtn.childNodes.length-1].textContent =
-    from==='locales' ? ' Volver a Locales' : from==='agenda' ? ' Volver a Agenda' : ' Volver al dashboard';
+    from==='locales' ? ' Volver a Locales' : from==='agenda' ? ' Volver a Agenda' : from==='top' ? ' Volver al Top 20' : ' Volver al dashboard';
 
   // Hide all views, show detail
   document.getElementById('main-view').style.display='none';
   document.getElementById('locales-view').style.display='none';
+  document.getElementById('top-view').style.display='none';
   document.getElementById('detail-view').style.display='block';
   window.scrollTo(0,0);
 
@@ -2731,7 +2846,10 @@ function applyDetailPeriod(days){
 
 function closeDetail(){
   document.getElementById('detail-view').style.display='none';
-  if(app._detFrom==='locales'){
+  if(app._detRows){ app._detRows=null; refreshEditGating(); }
+  if(app._detFrom==='top'){
+    document.getElementById('top-view').style.display='block';
+  } else if(app._detFrom==='locales'){
     document.getElementById('locales-view').style.display='block';
   } else if(app._detFrom==='agenda'){
     document.getElementById('agenda-view').style.display='block';
@@ -3953,9 +4071,15 @@ function calcLocalScore(localName){
   const cutoff=new Date(Date.now()-30*864e5);
   const visits=app.raw.filter(r=>r['Local']===localName&&parseDate(r['FECHA'])>=cutoff);
   if(!visits.length) return null;
+  return scoreDeVisitas(visits, app.brandCols.ARRIVATA);
+}
 
+// La fórmula del puntaje, sin la ventana: la comparten Locales (último mes) y
+// el Top 20 (semana / mes / total). Una sola fórmula para que un mismo local
+// no tenga dos puntajes distintos según dónde se lo mire.
+function scoreDeVisitas(visits, arrColsTodas){
   // Denominador: los productos vigentes en alguna visita de la ventana
-  const arrCols=(app.brandCols.ARRIVATA||[]).filter(c=>visits.some(v=>productoAplica(v,c)));
+  const arrCols=(arrColsTodas||[]).filter(c=>visits.some(v=>productoAplica(v,c)));
   const totalProds=arrCols.length;
   const withArr=visits.filter(v=>arrCols.some(c=>parseQty(v[c])>0)).length;
   const uniqueSeen=arrCols.filter(c=>visits.some(v=>parseQty(v[c])>0)).length;
@@ -3965,7 +4089,7 @@ function calcLocalScore(localName){
   const raw=(presencePct/100*0.5 + varietyPct/100*0.5)*10;
   const score=Math.max(1,Math.min(10,Math.round(raw)));
 
-  return { score, presencePct, varietyPct, visits:visits.length, withArr, uniqueSeen, totalProds };
+  return { score, raw, presencePct, varietyPct, visits:visits.length, withArr, uniqueSeen, totalProds, arrCols };
 }
 
 function scoreColor(s){ return s>=8?'#16a34a':s>=5?'#d97706':'#dc2626'; }
@@ -4002,6 +4126,7 @@ function openLocales(){
   sel.innerHTML='<option value="">Todas las zonas</option>'+zonas.map(z=>`<option value="${esc(z)}">${esc(z)}</option>`).join('');
   sel.value=cur;
 
+  _ocultarTop();
   document.getElementById('main-view').style.display='none';
   document.getElementById('agenda-view').style.display='none';
   document.getElementById('locales-view').style.display='block';
@@ -4107,6 +4232,286 @@ function renderLocalesGrid(){
       ${statsHtml}
     </div>`;
   }).join('');
+}
+
+// ── Top 20 ────────────────────────────────────────────────────
+// Ranking de locales de TODOS los supervisores juntos, sin importar qué zona
+// esté mirando el dashboard. Las visitas se piden de a un supervisor y se
+// etiquetan (_sup): el CSV global (getVisitas all=1) no dice de quién es cada
+// fila, y sin eso no se puede atribuir el local ni contar por supervisor.
+// Un local cargado por los dos (ej. "Coto Cabildo") es UNA fila con todas sus
+// visitas, a nombre del supervisor que más lo visitó en el período.
+const TOP_N=20;
+const TOP_CACHE_MS=5*60*1000;
+const TOP_PERIODOS={7:'Última semana',30:'Último mes',0:'Total'};
+const top20={ period:7, modo:'mejores', rows:null, arrCols:[], cargadoEn:0, cargando:null, lista:[], totalLocales:0, conPrevio:false };
+
+function openTop(){
+  ['main-view','locales-view','agenda-view','detail-view'].forEach(id=>{ document.getElementById(id).style.display='none'; });
+  document.getElementById('top-view').style.display='block';
+  app._topOpen=true;
+  renderSidebar();
+  window.scrollTo(0,0);
+  pintarBotonesTop();
+  cargarTop(false);
+}
+
+function closeTop(){
+  document.getElementById('top-view').style.display='none';
+  document.getElementById('main-view').style.display='block';
+  app._topOpen=false;
+  renderSidebar();
+  // Si el auto-sync redibujó la tabla mientras había un detalle del Top
+  // abierto, la dibujó sin botones de edición (ver canEditCurrentZone).
+  if(app.raw.length) setPeriod(app.periodDays);
+}
+
+// Sale del Top sin mostrar el dashboard: lo usan las otras vistas al abrirse.
+// También suelta las visitas del Top que tenga tomadas el detalle, por si se
+// sale directo desde ahí (si no, la edición quedaría apagada en la zona).
+function _ocultarTop(){
+  if(app._detRows){ app._detRows=null; refreshEditGating(); }
+  if(!app._topOpen) return;
+  document.getElementById('top-view').style.display='none';
+  app._topOpen=false;
+  renderSidebar();
+}
+
+function setTopPeriod(days){ top20.period=days; pintarBotonesTop(); renderTop(); }
+function setTopModo(modo){ top20.modo=modo; pintarBotonesTop(); renderTop(); }
+
+function pintarBotonesTop(){
+  document.querySelectorAll('.top-period-btn').forEach(b=>{
+    const on=parseInt(b.dataset.days)===top20.period;
+    b.classList.toggle('active-period',on); b.classList.toggle('btn-ghost',!on);
+  });
+  document.querySelectorAll('.top-modo-btn').forEach(b=>{
+    const on=b.dataset.modo===top20.modo;
+    b.classList.toggle('active-period',on); b.classList.toggle('btn-ghost',!on);
+  });
+}
+
+// Trae las visitas de cada supervisor (en paralelo). Guarda 5 min en memoria
+// para que ir y volver del detalle de un local no repita pedidos lentos.
+// Si falla un supervisor falla todo: un ranking con la mitad de los datos
+// sería engañoso, y nada en pantalla avisaría que falta alguien.
+function cargarTop(forzar){
+  if(!forzar && top20.rows && Date.now()-top20.cargadoEn<TOP_CACHE_MS){ renderTop(); return Promise.resolve(); }
+  if(top20.cargando) return top20.cargando;
+  const list=document.getElementById('top-list');
+  document.getElementById('top-resumen').textContent='';
+  list.innerHTML='<div class="card" style="padding:40px;text-align:center;color:var(--muted);font-size:.85rem">Cargando las visitas de todos los supervisores…</div>';
+  top20.cargando=(async()=>{
+    try{
+      if(!(app.allSupervisors||[]).length) await loadSupervisors();
+      const sups=app.allSupervisors||[];
+      if(!sups.length) throw new Error('No se encontraron supervisores.');
+      const partes=await Promise.all(sups.map(s=>fetchVisitasRows(s.username).then(rows=>{
+        rows.forEach(r=>{ r._sup=s.name||s.username; });
+        return rows;
+      })));
+      const rows=[].concat(...partes);
+      // Las columnas salen de las filas y no de app.brandCols, que describe la
+      // zona que se está mirando (puede no estar cargada, o tener menos columnas).
+      const cols=new Set();
+      partes.forEach(p=>{ if(p.length) detectBrands(Object.keys(p[0])).ARRIVATA.forEach(c=>cols.add(c)); });
+      top20.rows=rows; top20.arrCols=[...cols]; top20.cargadoEn=Date.now();
+      if(app._topOpen) renderTop();
+    }catch(e){
+      document.getElementById('top-resumen').textContent='';
+      list.innerHTML=`<div class="card" style="padding:32px;text-align:center">
+        <div style="font-weight:700;color:var(--red);margin-bottom:6px">No se pudo armar el ranking</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:14px">${esc(e.message||'Error de conexión')}</div>
+        <button class="btn btn-ghost" onclick="cargarTop(true)" style="font-size:.8rem">Reintentar</button>
+      </div>`;
+    }finally{ top20.cargando=null; }
+  })();
+  return top20.cargando;
+}
+
+// Un registro por local con las visitas en [desde, hasta). Sin cadena ni
+// orden: eso lo resuelve quien llama.
+function _rankearTop(rows, desde, hasta){
+  const porLocal={};
+  rows.forEach(r=>{
+    const d=parseDate(r['FECHA']); const n=r['Local'];
+    if(!d||!n) return;
+    if(desde&&d<desde) return;
+    if(hasta&&d>=hasta) return;
+    (porLocal[n]=porLocal[n]||[]).push({r,d});
+  });
+  return Object.entries(porLocal).map(([local,vs])=>{
+    const visits=vs.map(v=>v.r);
+    const s=scoreDeVisitas(visits, top20.arrCols);
+    // Supervisor que más lo visitó; si empatan, el de la visita más reciente
+    const porSup={};
+    vs.forEach(v=>{ const e=porSup[v.r._sup]||(porSup[v.r._sup]={n:0,ult:0}); e.n++; if(v.d>e.ult) e.ult=v.d; });
+    const sup=Object.entries(porSup).sort((a,b)=>b[1].n-a[1].n||b[1].ult-a[1].ult)[0][0];
+    const unidades=visits.reduce((t,v)=>t+s.arrCols.reduce((u,c)=>u+parseQty(v[c]),0),0);
+    const ultimaV=vs.reduce((a,b)=>b.d>a.d?b:a);
+    return {
+      local, sup, score:s.score, raw:s.raw, presencePct:s.presencePct, uniqueSeen:s.uniqueSeen, totalProds:s.totalProds,
+      visitas:visits.length, unidadesProm:Math.round(unidades/visits.length*10)/10,
+      ultima:ultimaV.d, zona:ultimaV.r._zona||'—', cadena:chainOf(local)||'Otras',
+      // Lo que bajó la variedad: productos que no aparecieron en ninguna visita del período
+      faltan:s.arrCols.filter(c=>!visits.some(v=>parseQty(v[c])>0)).map(colLabel)
+    };
+  });
+}
+
+// Mejores: más puntaje, más unidades por visita, visita más reciente.
+// Peores: menos puntaje, menos unidades; ante empate total, la visita más
+// reciente primero también (es la evidencia más fresca de que está mal).
+// El puntaje se compara SIN redondear: redondeado, un local con 12/13
+// productos (9,6) empata con uno completo (10) y las unidades lo ponían arriba.
+function _ordenarTop(lista, modo){
+  const s=modo==='peores'?-1:1;
+  return lista.sort((a,b)=>
+    s*(b.raw-a.raw) || s*(b.unidadesProm-a.unidadesProm) || (b.ultima-a.ultima) || a.local.localeCompare(b.local,'es'));
+}
+
+function calcTop(){
+  const cadena=document.getElementById('top-cadena').value;
+  const p=top20.period;
+  const filtrar=l=>l.filter(x=>!cadena||x.cadena===cadena);
+  const desde=p?new Date(Date.now()-p*864e5):null;
+  const actual=_ordenarTop(filtrar(_rankearTop(top20.rows, desde, null)), top20.modo);
+
+  // Movimiento: puesto en el período anterior del mismo largo, con los mismos
+  // filtros y el mismo orden. En "Total" no hay período anterior.
+  let prevPos=null;
+  if(p){
+    const previo=_ordenarTop(filtrar(_rankearTop(top20.rows, new Date(Date.now()-2*p*864e5), desde)), top20.modo);
+    prevPos={}; previo.forEach((x,i)=>{ prevPos[x.local]=i+1; });
+  }
+  const lista=actual.slice(0,TOP_N).map((x,i)=>{
+    const pos=i+1;
+    const antes=prevPos?prevPos[x.local]:undefined;
+    return { ...x, pos, mov: !prevPos ? null : antes===undefined ? 'nuevo' : antes-pos };
+  });
+  return { lista, totalLocales:actual.length, conPrevio:!!prevPos };
+}
+
+function _movHtml(mov){
+  if(mov===null) return '';
+  if(mov==='nuevo') return '<span title="Sin visitas en el período anterior" style="color:#1d4ed8;font-weight:800">Nuevo</span>';
+  if(mov===0) return '<span title="Mismo puesto que en el período anterior" style="color:var(--muted);font-weight:800">=</span>';
+  return mov>0
+    ? `<span title="Subió ${mov} puesto${mov!==1?'s':''}" style="color:#16a34a;font-weight:800">▲ ${mov}</span>`
+    : `<span title="Bajó ${-mov} puesto${mov!==-1?'s':''}" style="color:#dc2626;font-weight:800">▼ ${-mov}</span>`;
+}
+function _movTexto(mov){
+  if(mov===null) return '';
+  if(mov==='nuevo') return 'Nuevo';
+  if(mov===0) return '=';
+  return mov>0 ? '▲ '+mov : '▼ '+(-mov);
+}
+
+// Color fijo por supervisor (orden alfabético), para reconocerlos de un vistazo
+const TOP_SUP_COLORES=[['#EEF2FF','#3730A3'],['#ECFDF5','#047857'],['#FFF7ED','#C2410C'],['#FDF2F8','#BE185D']];
+function _colorSup(nombre){
+  const nombres=[...new Set((app.allSupervisors||[]).map(s=>s.name||s.username))].sort((a,b)=>a.localeCompare(b));
+  const i=Math.max(0,nombres.indexOf(nombre));
+  return TOP_SUP_COLORES[i%TOP_SUP_COLORES.length];
+}
+
+function renderTop(){
+  if(!top20.rows) return;
+  const {lista,totalLocales,conPrevio}=calcTop();
+  top20.lista=lista; top20.totalLocales=totalLocales; top20.conPrevio=conPrevio;
+
+  const periodo=TOP_PERIODOS[top20.period];
+  const titulo=(top20.modo==='peores'?'Peores ':'Top ')+TOP_N;
+  document.getElementById('top-title').textContent=titulo;
+
+  const resumen=document.getElementById('top-resumen');
+  const list=document.getElementById('top-list');
+  if(!lista.length){
+    resumen.textContent='';
+    list.innerHTML=`<div class="card" style="padding:40px;text-align:center;color:var(--muted);font-size:.85rem">Sin visitas en ${esc(periodo.toLowerCase())} para los filtros elegidos.</div>`;
+    return;
+  }
+
+  const porSup={};
+  lista.forEach(x=>{ porSup[x.sup]=(porSup[x.sup]||0)+1; });
+  const reparto=Object.entries(porSup).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<strong style="color:var(--text)">${n}</strong> de ${esc(s)}`).join(' · ');
+  const aviso=totalLocales<TOP_N
+    ? ` Solo ${totalLocales} local${totalLocales!==1?'es tuvieron':' tuvo'} visitas en este período.`
+    : ` De ${totalLocales} locales visitados.`;
+  resumen.innerHTML=`<strong style="color:var(--text)">${esc(periodo)}</strong> · ${reparto}.${aviso}`
+    + (conPrevio?' Las flechas comparan con el período anterior del mismo largo.':'');
+
+  list.innerHTML=lista.map(x=>{
+    const clr=scoreColor(x.score), bg=scoreBg(x.score);
+    const [supBg,supFg]=_colorSup(x.sup);
+    const falta=x.faltan.length
+      ? `<div class="top-falta"><strong style="color:#8B1714">Faltó:</strong> ${esc(x.faltan.join(', '))}</div>`
+      : `<div class="top-falta" style="color:#16a34a;font-weight:700">Todos los productos Arrivata ✓</div>`;
+    return `<div class="card top-row" data-local="${esc(x.local)}">
+      <div class="top-rank${x.pos<=3&&top20.modo==='mejores'?' podio':''}">${x.pos}</div>
+      <div style="min-width:0">
+        <div class="top-name">${esc(x.local)}</div>
+        <div class="top-chips">
+          <span class="top-chip" style="background:${supBg};color:${supFg}">${esc(x.sup)}</span>
+          <span class="top-chip">${esc(x.cadena==='Otras'?'Otra cadena':x.cadena)}</span>
+          <span class="top-chip">${x.visitas} visita${x.visitas!==1?'s':''} · última ${esc(fmtDate(x.ultima))}</span>
+        </div>
+        ${falta}
+      </div>
+      <div class="top-metrics">
+        <div class="top-metric"><div class="v">${x.presencePct}%</div><div class="l">Presencia</div></div>
+        <div class="top-metric"><div class="v">${x.uniqueSeen}/${x.totalProds}</div><div class="l">Variedad</div></div>
+        <div class="top-metric"><div class="v">${String(x.unidadesProm).replace('.',',')}</div><div class="l">Unid./visita</div></div>
+        ${conPrevio?`<div class="top-metric"><div class="v">${_movHtml(x.mov)}</div><div class="l">vs. anterior</div></div>`:''}
+      </div>
+      <div class="top-score" style="background:${bg}">
+        <div style="font-size:1.6rem;font-weight:800;color:${clr};line-height:1">${x.score}</div>
+        <div style="font-size:.6rem;color:${clr};font-weight:600">/10</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _topParaExportar(){
+  if(!top20.lista.length){ showToast('Todavía no hay un ranking cargado para exportar.', 'error'); return null; }
+  const periodo=TOP_PERIODOS[top20.period];
+  const cadena=document.getElementById('top-cadena').value;
+  const titulo=(top20.modo==='peores'?'Peores ':'Top ')+TOP_N+' — '+periodo+(cadena?' — '+(cadena==='Otras'?'Otras cadenas':cadena):'');
+  return { titulo, lista:top20.lista, conPrevio:top20.conPrevio };
+}
+
+function exportarTopExcel(){
+  const d=_topParaExportar(); if(!d) return;
+  const now=new Date().toLocaleDateString('es-AR');
+  const enc=['Puesto','Local','Cadena','Supervisor','Puntaje','Presencia %','Variedad','Unid./visita','Visitas','Última visita'];
+  if(d.conPrevio) enc.push('Vs. período anterior');
+  enc.push('Faltó');
+  const filas=d.lista.map(x=>{
+    const f=[x.pos, x.local, x.cadena, x.sup, x.score, x.presencePct+'%', x.uniqueSeen+'/'+x.totalProds, x.unidadesProm, x.visitas, x.ultima.toLocaleDateString('es-AR')];
+    if(d.conPrevio) f.push(_movTexto(x.mov));
+    f.push(x.faltan.join(', '));
+    return f;
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Arrivata — '+d.titulo],['Generado:',now],[],enc,...filas]), 'Ranking');
+  XLSX.writeFile(wb, `Arrivata_${d.titulo.split(' — ')[0].replace(/\s+/g,'')}_${now.replace(/\//g,'-')}.xlsx`);
+}
+
+function exportarTopPDF(){
+  const d=_topParaExportar(); if(!d) return;
+  const filas=d.lista.map(x=>`<tr>
+    <td>${x.pos}</td><td><strong>${esc(x.local)}</strong><br><span style="color:#7B6A55;font-size:.72rem">${esc(x.cadena)} · ${esc(x.sup)}</span></td>
+    <td style="color:${scoreColor(x.score)};font-weight:800">${x.score}/10</td><td>${x.presencePct}%</td><td>${x.uniqueSeen}/${x.totalProds}</td>
+    <td>${String(x.unidadesProm).replace('.',',')}</td><td>${x.visitas}</td>
+    ${d.conPrevio?`<td>${esc(_movTexto(x.mov))}</td>`:''}
+    <td style="font-size:.72rem">${esc(x.faltan.join(', ')||'—')}</td></tr>`).join('');
+  document.getElementById('print-report').innerHTML=`
+    <h1>Arrivata — ${esc(d.titulo)}</h1>
+    <p class="pr-meta">Todos los supervisores · Generado ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</p>
+    <table><thead><tr><th>#</th><th>Local</th><th>Puntaje</th><th>Presencia</th><th>Variedad</th><th>Unid./visita</th><th>Visitas</th>${d.conPrevio?'<th>Vs. anterior</th>':''}<th>Faltó</th></tr></thead>
+    <tbody>${filas}</tbody></table>
+    <p class="pr-meta">Puntaje: mitad presencia, mitad variedad de productos Arrivata. El orden usa el puntaje con decimales; desempate: unidades por visita y visita más reciente.</p>`;
+  setTimeout(()=>{ window.print(); },100);
 }
 
 // ── Utils ────────────────────────────────────────────────────
@@ -5064,6 +5469,7 @@ async function submitVisita(){
 // ══════════════════════════════════════════════════════════════
 
 function openAgenda(){
+  _ocultarTop();
   document.getElementById('main-view').style.display='none';
   document.getElementById('locales-view').style.display='none';
   document.getElementById('detail-view').style.display='none';
